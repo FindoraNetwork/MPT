@@ -1,4 +1,25 @@
+/// About nibble
+/// Briefly, a nibble is just a hex char, it is desgined for the BranchNode.
+///
+/// For example.
+/// the key is H160 which contains 20 bytes, the first bytes have u8::MAX branches, in this design, our BranchNode would be like:
+///
+///
+///                          BranchNode
+///              /    /     / ......  \     \    
+///           Node  Node  None      None   None   x 256
+///
+/// this would be a [Node; 256] that contains many many None child here, it wastes and would not be friend with stack.
+/// the solution here is the hex encode; "1111" is just 15, so for the BranchNode, the chlid have only 16.
+/// wasting is largely alleviated, but the deepth increase double.
+/// all this is engineering consideration.
+///
+/// About HP-encode（Hex-Prefix Encoding ）
+/// beacuse the hex encode used in nibble, one byte become two bytes, it's not good for serialization.
+/// we use Hp-encode to compress nibbles.
 use std::cmp::min;
+
+use crate::TrieError;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Nibbles {
@@ -6,8 +27,8 @@ pub struct Nibbles {
 }
 
 impl Nibbles {
-    pub fn from_hex(hex: Vec<u8>) -> Self {
-        Nibbles { hex_data: hex }
+    pub(crate) fn from_hex_unchecked(hex_data: Vec<u8>) -> Self {
+        Nibbles { hex_data }
     }
 
     pub fn from_raw(raw: Vec<u8>, is_leaf: bool) -> Self {
@@ -22,7 +43,7 @@ impl Nibbles {
         Nibbles { hex_data }
     }
 
-    pub fn from_compact(compact: Vec<u8>) -> Self {
+    pub fn from_compact(compact: Vec<u8>) -> Result<Self, TrieError> {
         let mut hex = vec![];
         let flag = compact[0];
 
@@ -35,8 +56,8 @@ impl Nibbles {
                 is_leaf = true;
                 hex.push(flag % 16);
             }
-            _ => panic!("invalid data"),
-        }
+            _ => return Err(TrieError::InvalidData),
+        };
 
         for item in &compact[1..] {
             hex.push(item / 16);
@@ -46,20 +67,20 @@ impl Nibbles {
             hex.push(16);
         }
 
-        Nibbles { hex_data: hex }
+        Ok(Nibbles { hex_data: hex })
     }
 
     pub fn is_leaf(&self) -> bool {
-        self.hex_data[self.hex_data.len() - 1] == 16
+        *self.hex_data.last().unwrap() == 16
     }
 
     pub fn encode_compact(&self) -> Vec<u8> {
         let mut compact = vec![];
         let is_leaf = self.is_leaf();
         let mut hex = if is_leaf {
-            &self.hex_data[0..self.hex_data.len() - 1]
+            &self.hex_data[..self.hex_data.len() - 1]
         } else {
-            &self.hex_data[0..]
+            &self.hex_data
         };
         // node type    path length    |    prefix    hexchar
         // --------------------------------------------------
@@ -87,9 +108,9 @@ impl Nibbles {
         let mut raw = vec![];
         let is_leaf = self.is_leaf();
         let hex = if is_leaf {
-            &self.hex_data[0..self.hex_data.len() - 1]
+            &self.hex_data[..self.hex_data.len() - 1]
         } else {
-            &self.hex_data[0..]
+            &self.hex_data[..]
         };
 
         for i in 0..(hex.len() / 2) {
@@ -128,7 +149,7 @@ impl Nibbles {
     }
 
     pub fn slice(&self, start: usize, end: usize) -> Nibbles {
-        Nibbles::from_hex(self.hex_data[start..end].to_vec())
+        Nibbles::from_hex_unchecked(self.hex_data[start..end].to_vec())
     }
 
     pub fn get_data(&self) -> &[u8] {
@@ -139,7 +160,7 @@ impl Nibbles {
         let mut hex_data = vec![];
         hex_data.extend_from_slice(self.get_data());
         hex_data.extend_from_slice(b.get_data());
-        Nibbles::from_hex(hex_data)
+        Nibbles::from_hex_unchecked(hex_data)
     }
 
     pub fn extend(&mut self, b: &Nibbles) {
@@ -167,7 +188,7 @@ mod tests {
     fn test_nibble() {
         let n = Nibbles::from_raw(b"key1".to_vec(), true);
         let compact = n.encode_compact();
-        let n2 = Nibbles::from_compact(compact);
+        let n2 = Nibbles::from_compact(compact).unwrap();
         let (raw, is_leaf) = n2.encode_raw();
         assert!(is_leaf);
         assert_eq!(raw, b"key1");

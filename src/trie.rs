@@ -6,52 +6,17 @@ use std::sync::Arc;
 use hasher::Hasher;
 use rlp::{Prototype, Rlp, RlpStream};
 
-use crate::db::{MemoryDB, DB};
+use crate::db::{Database, MemoryDB};
 use crate::errors::TrieError;
 use crate::nibbles::Nibbles;
 use crate::node::{empty_children, BranchNode, Node};
 
 pub type TrieResult<T> = Result<T, TrieError>;
 
-pub trait Trie<D: DB, H: Hasher> {
-    /// Returns the value for key stored in the trie.
-    fn get(&self, key: &[u8]) -> TrieResult<Option<Vec<u8>>>;
-
-    /// Checks that the key is present in the trie
-    fn contains(&self, key: &[u8]) -> TrieResult<bool>;
-
-    /// Inserts value into trie and modifies it if it exists
-    fn insert(&mut self, key: Vec<u8>, value: Vec<u8>) -> TrieResult<()>;
-
-    /// Removes any existing value for key from the trie.
-    fn remove(&mut self, key: &[u8]) -> TrieResult<bool>;
-
-    /// Saves all the nodes in the db, clears the cache data, recalculates the root.
-    /// Returns the root hash of the trie.
-    fn root(&mut self) -> TrieResult<Vec<u8>>;
-
-    /// Prove constructs a merkle proof for key. The result contains all encoded nodes
-    /// on the path to the value at key. The value itself is also included in the last
-    /// node and can be retrieved by verifying the proof.
-    ///
-    /// If the trie does not contain a value for key, the returned proof contains all
-    /// nodes of the longest existing prefix of the key (at least the root node), ending
-    /// with the node that proves the absence of the key.
-    fn get_proof(&self, key: &[u8]) -> TrieResult<Vec<Vec<u8>>>;
-
-    /// return value if key exists, None if key not exist, Error if proof is wrong
-    fn verify_proof(
-        &self,
-        root_hash: Vec<u8>,
-        key: &[u8],
-        proof: Vec<Vec<u8>>,
-    ) -> TrieResult<Option<Vec<u8>>>;
-}
-
 #[derive(Debug)]
 pub struct PatriciaTrie<D, H>
 where
-    D: DB,
+    D: Database,
     H: Hasher,
 {
     root: Node,
@@ -105,7 +70,7 @@ impl From<Node> for TraceNode {
 
 pub struct TrieIterator<'a, D, H>
 where
-    D: DB,
+    D: Database,
     H: Hasher,
 {
     trie: &'a PatriciaTrie<D, H>,
@@ -115,7 +80,7 @@ where
 
 impl<'a, D, H> Iterator for TrieIterator<'a, D, H>
 where
-    D: DB,
+    D: Database,
     H: Hasher,
 {
     type Item = (Vec<u8>, Vec<u8>);
@@ -201,7 +166,7 @@ where
 
 impl<D, H> PatriciaTrie<D, H>
 where
-    D: DB,
+    D: Database,
     H: Hasher,
 {
     pub fn iter(&self) -> TrieIterator<D, H> {
@@ -228,7 +193,10 @@ where
     }
 
     pub fn from(db: Arc<D>, hasher: Arc<H>, root: &[u8]) -> TrieResult<Self> {
-        match db.get(root).map_err(|e| TrieError::DB(e.to_string()))? {
+        match db
+            .get(root)
+            .map_err(|e| TrieError::DataBaseError(Box::new(e)))?
+        {
             Some(data) => {
                 let mut trie = Self {
                     root: Node::Empty,
@@ -293,35 +261,35 @@ where
             .clone()
             .unwrap()
             .insert_batch(keys, values)
-            .map_err(|e| TrieError::DB(e.to_string()))?;
+            .map_err(|e| TrieError::DataBaseError(Box::new(e)))?;
         pt.backup_db
             .clone()
             .unwrap()
             .flush()
-            .map_err(|e| TrieError::DB(e.to_string()))?;
+            .map_err(|e| TrieError::DataBaseError(Box::new(e)))?;
         Ok((pt, addr_list))
     }
 }
 
-impl<D, H> Trie<D, H> for PatriciaTrie<D, H>
+impl<D, H> PatriciaTrie<D, H>
 where
-    D: DB,
+    D: Database,
     H: Hasher,
 {
     /// Returns the value for key stored in the trie.
-    fn get(&self, key: &[u8]) -> TrieResult<Option<Vec<u8>>> {
+    pub fn get(&self, key: &[u8]) -> TrieResult<Option<Vec<u8>>> {
         self.get_at(self.root.clone(), &Nibbles::from_raw(key.to_vec(), true))
     }
 
     /// Checks that the key is present in the trie
-    fn contains(&self, key: &[u8]) -> TrieResult<bool> {
+    pub fn contains(&self, key: &[u8]) -> TrieResult<bool> {
         Ok(self
             .get_at(self.root.clone(), &Nibbles::from_raw(key.to_vec(), true))?
             .map_or(false, |_| true))
     }
 
     /// Inserts value into trie and modifies it if it exists
-    fn insert(&mut self, key: Vec<u8>, value: Vec<u8>) -> TrieResult<()> {
+    pub fn insert(&mut self, key: Vec<u8>, value: Vec<u8>) -> TrieResult<()> {
         if value.is_empty() {
             self.remove(&key)?;
             return Ok(());
@@ -332,7 +300,7 @@ where
     }
 
     /// Removes any existing value for key from the trie.
-    fn remove(&mut self, key: &[u8]) -> TrieResult<bool> {
+    pub fn remove(&mut self, key: &[u8]) -> TrieResult<bool> {
         let (n, removed) =
             self.delete_at(self.root.clone(), &Nibbles::from_raw(key.to_vec(), true))?;
         self.root = n;
@@ -341,7 +309,7 @@ where
 
     /// Saves all the nodes in the db, clears the cache data, recalculates the root.
     /// Returns the root hash of the trie.
-    fn root(&mut self) -> TrieResult<Vec<u8>> {
+    pub fn root(&mut self) -> TrieResult<Vec<u8>> {
         self.commit()
     }
 
@@ -352,7 +320,7 @@ where
     /// If the trie does not contain a value for key, the returned proof contains all
     /// nodes of the longest existing prefix of the key (at least the root node), ending
     /// with the node that proves the absence of the key.
-    fn get_proof(&self, key: &[u8]) -> TrieResult<Vec<Vec<u8>>> {
+    pub fn get_proof(&self, key: &[u8]) -> TrieResult<Vec<Vec<u8>>> {
         let mut path =
             self.get_path_at(self.root.clone(), &Nibbles::from_raw(key.to_vec(), true))?;
         match self.root {
@@ -363,7 +331,7 @@ where
     }
 
     /// return value if key exists, None if key not exist, Error if proof is wrong
-    fn verify_proof(
+    pub fn verify_proof(
         &self,
         root_hash: Vec<u8>,
         key: &[u8],
@@ -381,13 +349,7 @@ where
             .or(Err(TrieError::InvalidProof))?;
         trie.get(key).or(Err(TrieError::InvalidProof))
     }
-}
 
-impl<D, H> PatriciaTrie<D, H>
-where
-    D: DB,
-    H: Hasher,
-{
     fn get_at(&self, n: Node, partial: &Nibbles) -> TrieResult<Option<Vec<u8>>> {
         match n {
             Node::Empty => Ok(None),
@@ -615,8 +577,10 @@ where
                     let used_index = used_indexs[0];
                     let n = borrow_branch.children[used_index].clone();
 
-                    let new_node =
-                        Node::from_extension(Nibbles::from_hex(vec![used_index as u8]), n);
+                    let new_node = Node::from_extension(
+                        Nibbles::from_hex_unchecked(vec![used_index as u8]),
+                        n,
+                    );
                     self.degenerate(new_node)
                 } else {
                     Ok(Node::Branch(branch.clone()))
@@ -716,19 +680,19 @@ where
 
         self.db
             .insert_batch(keys, values)
-            .map_err(|e| TrieError::DB(e.to_string()))?;
+            .map_err(|e| TrieError::DataBaseError(Box::new(e)))?;
 
-        let removed_keys: Vec<Vec<u8>> = self
-            .passing_keys
-            .borrow()
+        let passing_keys = self.passing_keys.borrow();
+
+        let removed_keys: Vec<&[u8]> = passing_keys
             .iter()
-            .filter(|h| !self.gen_keys.borrow().contains(&h.to_vec()))
-            .map(|h| h.to_vec())
+            .filter(|h| !self.gen_keys.borrow().contains(&**h))
+            .map(|x| x.as_slice())
             .collect();
 
         self.db
             .remove_batch(&removed_keys)
-            .map_err(|e| TrieError::DB(e.to_string()))?;
+            .map_err(|e| TrieError::DataBaseError(Box::new(e)))?;
 
         self.root_hash = root_hash.to_vec();
         self.gen_keys.borrow_mut().clear();
@@ -812,7 +776,7 @@ where
             Prototype::Data(0) => Ok(Node::Empty),
             Prototype::List(2) => {
                 let key = r.at(0)?.data()?;
-                let key = Nibbles::from_compact(key.to_vec());
+                let key = Nibbles::from_compact(key.to_vec())?;
 
                 if key.is_leaf() {
                     Ok(Node::from_leaf(key, r.at(1)?.data()?.to_vec()))
@@ -852,7 +816,11 @@ where
     }
 
     fn recover_from_db(&self, key: &[u8]) -> TrieResult<Node> {
-        match self.db.get(key).map_err(|e| TrieError::DB(e.to_string()))? {
+        match self
+            .db
+            .get(key)
+            .map_err(|e| TrieError::DataBaseError(Box::new(e)))?
+        {
             Some(value) => Ok(self.decode_node(&value)?),
             None => Ok(Node::Empty),
         }
@@ -923,8 +891,8 @@ mod tests {
 
     use hasher::{Hasher, HasherKeccak};
 
-    use super::{PatriciaTrie, Trie};
-    use crate::db::{MemoryDB, DB};
+    use super::PatriciaTrie;
+    use crate::db::{Database, MemoryDB};
 
     #[test]
     fn test_trie_insert() {

@@ -44,6 +44,6 @@ mod db;
 mod errors;
 mod trie;
 
-pub use db::{MemoryDB, DB};
-pub use errors::{MemDBError, TrieError};
-pub use trie::{PatriciaTrie, Trie};
+pub use db::{Database, MemoryDB};
+pub use errors::TrieError;
+pub use trie::PatriciaTrie;

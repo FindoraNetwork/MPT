@@ -7,7 +7,7 @@ mod trie_tests {
     use hasher::HasherKeccak;
 
     use crate::db::MemoryDB;
-    use crate::trie::{PatriciaTrie, Trie};
+    use crate::trie::PatriciaTrie;
 
     fn assert_root(data: Vec<(&[u8], &[u8])>, hash: &str) {
         let memdb = Arc::new(MemoryDB::new(true));

@@ -1,45 +1,23 @@
-use std::error::Error;
-use std::fmt;
-
+/// This file define the error type that used in this crate.
 use rlp::DecoderError;
+use thiserror::Error;
 
-#[derive(Debug)]
+use std::error::Error as StdError;
+
+///Error types for this crate.
+#[derive(Error, Debug)]
 pub enum TrieError {
-    DB(String),
-    Decoder(DecoderError),
+    //Error for customized database.
+    #[error("Database error: {0}.")]
+    DataBaseError(Box<dyn StdError>),
+    #[error("rlp decode error: {0}.")]
+    Decoder(#[from] DecoderError),
+    #[error("Trie error: Invalid data.")]
     InvalidData,
+    #[error("Trie error: Invalid state root.")]
     InvalidStateRoot,
+    #[error("Trie error: Invalid proof.")]
     InvalidProof,
-}
-
-impl Error for TrieError {}
-
-impl fmt::Display for TrieError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let printable = match *self {
-            TrieError::DB(ref err) => format!("trie error: {:?}", err),
-            TrieError::Decoder(ref err) => format!("trie error: {:?}", err),
-            TrieError::InvalidData => "trie error: invali data".to_owned(),
-            TrieError::InvalidStateRoot => "trie error: invali state root".to_owned(),
-            TrieError::InvalidProof => "trie error: invali proof".to_owned(),
-        };
-        write!(f, "{}", printable)
-    }
-}
-
-impl From<DecoderError> for TrieError {
-    fn from(error: DecoderError) -> Self {
-        TrieError::Decoder(error)
-    }
-}
-
-#[derive(Debug)]
-pub enum MemDBError {}
-
-impl Error for MemDBError {}
-
-impl fmt::Display for MemDBError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "error")
-    }
+    #[error("Invalid hex: {0}, [0,16) expected.")]
+    InvalidHex(u8),
 }

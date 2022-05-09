@@ -6,7 +6,7 @@ use hasher::HasherKeccak;
 use uuid::Uuid;
 
 use cita_trie::MemoryDB;
-use cita_trie::{PatriciaTrie, Trie};
+use cita_trie::PatriciaTrie;
 
 fn insert_worse_case_benchmark(c: &mut Criterion) {
     c.bench_function("insert one", |b| {

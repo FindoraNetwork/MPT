@@ -13,8 +13,10 @@ documentation = "https://docs.rs/cita_trie"
 
 [dependencies]
 parking_lot = "0.11"
+bytes = "1"
 rlp = "0.5"
 hasher = { version = "0.1", features = ["hash-keccak"] }
+thiserror = "1.0"
 
 [dev-dependencies]
 rand = "0.6.3"

@@ -1,26 +1,27 @@
 use std::collections::HashMap;
-use std::error::Error;
+use std::convert::Infallible;
+use std::error::Error as StdError;
 use std::sync::Arc;
 
 use parking_lot::RwLock;
 
-use crate::errors::MemDBError;
-
-/// "DB" defines the "trait" of trie and database interaction.
+/// "Database" defines the "trait" of trie and database interaction.
 /// You should first write the data to the cache and write the data
 /// to the database in bulk after the end of a set of operations.
-pub trait DB: Send + Sync {
-    type Error: Error;
+pub trait Database: Send + Sync {
+    type Error: 'static + StdError;
 
+    /// Returns a the data corresponding to the key.
     fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, Self::Error>;
 
+    /// Returns true if the map contains data for the specified key.
     fn contains(&self, key: &[u8]) -> Result<bool, Self::Error>;
 
     /// Insert data into the cache.
     fn insert(&self, key: Vec<u8>, value: Vec<u8>) -> Result<(), Self::Error>;
 
-    /// Insert data into the cache.
-    fn remove(&self, key: &[u8]) -> Result<(), Self::Error>;
+    /// Removes a key from the cache, returning the data at the key if the key was previously in the map.
+    fn remove(&self, key: &[u8]) -> Result<Option<Vec<u8>>, Self::Error>;
 
     /// Insert a batch of data into the cache.
     fn insert_batch(&self, keys: Vec<Vec<u8>>, values: Vec<Vec<u8>>) -> Result<(), Self::Error> {
@@ -32,8 +33,8 @@ pub trait DB: Send + Sync {
         Ok(())
     }
 
-    /// Remove a batch of data into the cache.
-    fn remove_batch(&self, keys: &[Vec<u8>]) -> Result<(), Self::Error> {
+    /// Remove a batch of data into the cache, drop the data at the keys.
+    fn remove_batch(&self, keys: &[&[u8]]) -> Result<(), Self::Error> {
         for key in keys {
             self.remove(key)?;
         }
@@ -49,9 +50,10 @@ pub trait DB: Send + Sync {
     fn is_empty(&self) -> Result<bool, Self::Error>;
 }
 
+/// Memeory based database, implemented via a HashMap.
+///  If "light" is true, the data is deleted from the database at the time of submission.
 #[derive(Default, Debug)]
 pub struct MemoryDB {
-    // If "light" is true, the data is deleted from the database at the time of submission.
     light: bool,
     storage: Arc<RwLock<HashMap<Vec<u8>, Vec<u8>>>>,
 }
@@ -65,15 +67,12 @@ impl MemoryDB {
     }
 }
 
-impl DB for MemoryDB {
-    type Error = MemDBError;
+impl Database for MemoryDB {
+    //HashMap based database will not fail.
+    type Error = Infallible;
 
     fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, Self::Error> {
-        if let Some(value) = self.storage.read().get(key) {
-            Ok(Some(value.clone()))
-        } else {
-            Ok(None)
-        }
+        Ok(self.storage.read().get(key).map(|v| v.clone()))
     }
 
     fn insert(&self, key: Vec<u8>, value: Vec<u8>) -> Result<(), Self::Error> {
@@ -85,11 +84,12 @@ impl DB for MemoryDB {
         Ok(self.storage.read().contains_key(key))
     }
 
-    fn remove(&self, key: &[u8]) -> Result<(), Self::Error> {
-        if self.light {
-            self.storage.write().remove(key);
-        }
-        Ok(())
+    fn remove(&self, key: &[u8]) -> Result<Option<Vec<u8>>, Self::Error> {
+        Ok(if self.light {
+            self.storage.write().remove(key)
+        } else {
+            None
+        })
     }
 
     fn flush(&self) -> Result<(), Self::Error> {

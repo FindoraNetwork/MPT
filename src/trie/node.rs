@@ -1,8 +1,6 @@
 // use std::cell::RefCell;
 // use std::rc::Rc;
 
-use core::ptr::NonNull;
-
 use crate::nibbles::Nibbles;
 
 #[derive(Debug)]
@@ -18,12 +16,15 @@ impl Node {
         Node::Leaf(LeafNode { key, value })
     }
 
-    pub fn new_branch(children: [Option<NonNull<Node>>; 16], value: Option<Vec<u8>>) -> Self {
-        Node::Branch(BranchNode { children, value })
-    }
+    // pub fn new_branch(childrens: [Option<Box<Node>>; 16], value: Option<Vec<u8>>) -> Self {
+    //     Node::Branch(BranchNode {
+    //         childrens,
+    //         value,
+    //     })
+    // }
 
     pub fn new_extension(prefix: Nibbles, node: Node) -> Self {
-        let node = Some(node.into_raw());
+        let node = Some(node.into_box());
         Node::Extension(ExtensionNode { prefix, node })
     }
 
@@ -31,8 +32,8 @@ impl Node {
         Node::Hash(HashNode { hash })
     }
 
-    pub fn into_raw(self) -> NonNull<Self> {
-        unsafe { NonNull::new_unchecked(Box::into_raw(Box::new(self))) }
+    pub fn into_box(self) -> Box<Self> {
+        Box::new(self)
     }
 
     pub unsafe fn from_raw(ptr: *mut Self) -> Self {
@@ -48,39 +49,50 @@ pub struct LeafNode {
 
 #[derive(Debug)]
 pub struct BranchNode {
-    pub children: [Option<NonNull<Node>>; 16],
+    //[Box<Node>;16] is very larger than others, this can reduce the size of Node.
+    childrens: Vec<Option<Box<Node>>>,
     pub value: Option<Vec<u8>>,
 }
 
 impl BranchNode {
-    pub fn new_empty() -> Self {
+    ///Create a new empty boxed BranchNode.
+    pub fn new() -> Self {
+        let childrens = (0..16).map(|_| None).collect();
         BranchNode {
-            children: [None; 16],
+            childrens,
             value: None,
         }
     }
 
-    pub fn insert(&mut self, i: usize, node: Node) {
+    pub fn insert(&mut self, i: usize, node: Option<Node>) {
         if i == 16 {
             match node {
-                Node::Leaf(leaf) => {
+                Some(Node::Leaf(leaf)) => {
                     self.value = Some(leaf.value);
                 }
                 _ => panic!("The node must be leaf node"),
             }
         } else {
-            self.children[i] = Some(node.into_raw());
+            self.childrens[i] = node.map(Node::into_box);
         }
     }
-}
 
-impl Drop for BranchNode {
-    fn drop(&mut self) {
-        for c in self.children {
-            if let Some(ptr) = c {
-                unsafe { Box::from_raw(ptr.as_ptr()) };
+    pub fn take_child(&mut self, index: usize) -> Option<Box<Node>> {
+        self.childrens[index].take()
+    }
+
+    pub fn get_child(&self, index: usize) -> Option<&Node> {
+        self.childrens[index].as_deref()
+    }
+
+    pub fn used_indexes(&self) -> Vec<usize> {
+        let mut used_indexes = Vec::with_capacity(16);
+        for (index, node) in self.childrens.iter().enumerate() {
+            if node.is_some() {
+                used_indexes.push(index);
             }
         }
+        used_indexes
     }
 }
 
@@ -88,16 +100,16 @@ impl Drop for BranchNode {
 pub struct ExtensionNode {
     pub prefix: Nibbles,
     //If node is None, it must be deleted.
-    pub node: Option<NonNull<Node>>,
+    pub node: Option<Box<Node>>,
 }
 
-impl Drop for ExtensionNode {
-    fn drop(&mut self) {
-        if let Some(ptr) = self.node {
-            unsafe { Box::from_raw(ptr.as_ptr()) };
-        }
-    }
-}
+// impl Drop for ExtensionNode {
+//     fn drop(&mut self) {
+//         if let Some(ptr) = self.node {
+//             unsafe { Box::from_raw(ptr.as_ptr()) };
+//         }
+//     }
+// }
 
 #[derive(Debug)]
 pub struct HashNode {

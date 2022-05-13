@@ -72,7 +72,7 @@ impl Database for MemoryDB {
     type Error = Infallible;
 
     fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>, Self::Error> {
-        Ok(self.storage.read().get(key).map(|v| v.clone()))
+        Ok(self.storage.read().get(key).cloned())
     }
 
     fn insert(&self, key: Vec<u8>, value: Vec<u8>) -> Result<(), Self::Error> {

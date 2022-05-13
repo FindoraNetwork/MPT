@@ -385,7 +385,7 @@ where
                     }
                 }
                 Node::Hash(hash_node) => {
-                    if let Some(n) = self.recover_from_db(&hash_node.hash) {
+                    if let Some(n) = self.recover_from_db(&hash_node.hash)? {
                         let mut ptr = n.into_raw();
                         let res = self
                             .get_at(Some(ptr), partial)?
@@ -489,9 +489,12 @@ where
                     Node::Extension(ext)
                 }
                 Node::Hash(hash_node) => {
-                    let n = self.recover_from_db(&hash_node.hash);
-                    self.passing_keys.insert(hash_node.hash);
-                    self.insert_at(n.map(|x| x.into_raw()), partial, value)
+                    if let Ok(n) = self.recover_from_db(&hash_node.hash) {
+                        self.passing_keys.insert(hash_node.hash);
+                        self.insert_at(n.map(|x| x.into_raw()), partial, value)
+                    } else {
+                        Node::Hash(hash_node)
+                    }
                 }
             }
         } else {
@@ -538,14 +541,14 @@ where
                     }
                 }
                 Node::Hash(hash_node) => {
-                    let hash = hash_node.hash;
-                    self.passing_keys.insert(hash.clone());
-
-                    let n = self.recover_from_db(&hash);
-
-                    match self.delete_at(n.map(Node::into_raw), partial) {
-                        (None, d) => return (None, d),
-                        (Some(n), d) => (n, d),
+                    if let Ok(n) = self.recover_from_db(&hash_node.hash) {
+                        self.passing_keys.insert(hash_node.hash);
+                        match self.delete_at(n.map(Node::into_raw), partial) {
+                            (None, d) => return (None, d),
+                            (Some(n), d) => (n, d),
+                        }
+                    } else {
+                        (Node::Hash(hash_node), false)
                     }
                 }
             }
@@ -616,13 +619,21 @@ where
                         }
                         // try again after recovering node from the db.
                         Node::Hash(hash_node) => {
-                            let hash = hash_node.hash;
-                            if let Some(new_node) = self.recover_from_db(&hash) {
-                                let n = Node::new_extension(ext.prefix.clone(), new_node);
-                                self.passing_keys.insert(hash);
-                                self.degenerate(n)
-                            } else {
-                                None
+                            match self.recover_from_db(&hash_node.hash) {
+                                Ok(node) => {
+                                    let hash = hash_node.hash;
+                                    self.passing_keys.insert(hash);
+                                    if let Some(new_node) = node {
+                                        let n = Node::new_extension(ext.prefix.clone(), new_node);
+                                        self.degenerate(n)
+                                    } else {
+                                        None
+                                    }
+                                }
+                                Err(_e) => {
+                                    //[TODO]
+                                    Some(Node::Hash(hash_node))
+                                }
                             }
                         }
                         _ => Some(Node::Extension(ext)),
@@ -829,14 +840,17 @@ where
         }
     }
 
-    fn recover_from_db(&self, key: &[u8]) -> Option<Node> {
+    fn recover_from_db(&self, key: &[u8]) -> TrieResult<Option<Node>> {
         let value = self
             .db
             .get(key)
-            .map_err(|e| TrieError::DataBaseError(Box::new(e)))
-            .unwrap();
+            .map_err(|e| TrieError::DataBaseError(Box::new(e)))?;
 
-        value.map(|v| self.decode_node(&v).unwrap()).flatten()
+        Ok(if let Some(data) = value {
+            self.decode_node(&data)?
+        } else {
+            None
+        })
     }
 
     // fn cache_node(&self, n: Node) -> TrieResult<Vec<u8>> {

@@ -1,3 +1,4 @@
+use bytes::Bytes;
 /// About nibble
 /// Briefly, a nibble is just a hex char, it is desgined for the BranchNode.
 ///
@@ -17,30 +18,32 @@
 /// About HP-encode（Hex-Prefix Encoding ）
 /// beacuse the hex encode used in nibble, one byte become two bytes, it's not good for serialization.
 /// we use Hp-encode to compress nibbles.
-use std::cmp::min;
+use std::{cmp::min, ops::RangeBounds};
 
 use crate::TrieError;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Nibbles {
-    hex_data: Vec<u8>,
+    hex_data: Bytes,
 }
 
 impl Nibbles {
-    pub(crate) fn from_hex_unchecked(hex_data: Vec<u8>) -> Self {
+    pub(crate) fn from_hex_unchecked(hex_data: Bytes) -> Self {
         Nibbles { hex_data }
     }
 
-    pub fn from_raw(raw: Vec<u8>, is_leaf: bool) -> Self {
-        let mut hex_data = vec![];
-        for item in raw.into_iter() {
-            hex_data.push(item / 16);
-            hex_data.push(item % 16);
+    pub fn from_bytes(raw: &[u8], is_leaf: bool) -> Self {
+        let mut hex_data = Vec::with_capacity(raw.len() * 2);
+        for item in raw.iter() {
+            hex_data.push(*item / 16);
+            hex_data.push(*item % 16);
         }
         if is_leaf {
             hex_data.push(16);
         }
-        Nibbles { hex_data }
+        Nibbles {
+            hex_data: Bytes::from(hex_data),
+        }
     }
 
     pub fn from_compact(compact: Vec<u8>) -> Result<Self, TrieError> {
@@ -67,7 +70,9 @@ impl Nibbles {
             hex.push(16);
         }
 
-        Ok(Nibbles { hex_data: hex })
+        Ok(Nibbles {
+            hex_data: Bytes::from(hex),
+        })
     }
 
     pub fn is_leaf(&self) -> bool {
@@ -120,15 +125,18 @@ impl Nibbles {
         (raw, is_leaf)
     }
 
+    #[inline(always)]
     pub fn len(&self) -> usize {
         self.hex_data.len()
     }
 
+    #[inline(always)]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
-    pub fn at(&self, i: usize) -> usize {
+    #[inline(always)]
+    pub fn hex_at(&self, i: usize) -> usize {
         self.hex_data[i] as usize
     }
 
@@ -136,7 +144,7 @@ impl Nibbles {
         let s = min(self.len(), other_partial.len());
         let mut i = 0usize;
         while i < s {
-            if self.at(i) != other_partial.at(i) {
+            if self.hex_at(i) != other_partial.hex_at(i) {
                 break;
             }
             i += 1;
@@ -144,40 +152,44 @@ impl Nibbles {
         i
     }
 
+    #[inline(always)]
     pub fn offset(&self, index: usize) -> Nibbles {
-        self.slice(index, self.hex_data.len())
+        self.slice(index..self.hex_data.len())
     }
 
-    pub fn slice(&self, start: usize, end: usize) -> Nibbles {
-        Nibbles::from_hex_unchecked(self.hex_data[start..end].to_vec())
+    #[inline(always)]
+    pub fn slice(&self, range: impl RangeBounds<usize>) -> Nibbles {
+        Nibbles::from_hex_unchecked(self.hex_data.slice(range))
     }
 
+    #[inline(always)]
     pub fn get_data(&self) -> &[u8] {
         &self.hex_data
     }
 
     pub fn join(&self, b: &Nibbles) -> Nibbles {
-        let mut hex_data = vec![];
+        let len = self.get_data().len() + b.get_data().len();
+        let mut hex_data = Vec::with_capacity(len);
         hex_data.extend_from_slice(self.get_data());
         hex_data.extend_from_slice(b.get_data());
-        Nibbles::from_hex_unchecked(hex_data)
+        Nibbles::from_hex_unchecked(Bytes::from(hex_data))
     }
 
-    pub fn extend(&mut self, b: &Nibbles) {
-        self.hex_data.extend_from_slice(b.get_data());
-    }
+    // pub fn extend(&mut self, b: &Nibbles) {
+    //     self.hex_data.extend_from_slice(b.get_data());
+    // }
 
     pub fn truncate(&mut self, len: usize) {
-        self.hex_data.truncate(len)
+        let _ = self.hex_data.split_off(len - 1);
     }
 
-    pub fn pop(&mut self) -> Option<u8> {
-        self.hex_data.pop()
-    }
+    // pub fn pop(&mut self) -> Option<u8> {
+    //     self.hex_data.pop()
+    // }
 
-    pub fn push(&mut self, e: u8) {
-        self.hex_data.push(e)
-    }
+    // pub fn push(&mut self, e: u8) {
+    //     self.hex_data.push(e)
+    // }
 }
 
 #[cfg(test)]
@@ -186,7 +198,7 @@ mod tests {
 
     #[test]
     fn test_nibble() {
-        let n = Nibbles::from_raw(b"key1".to_vec(), true);
+        let n = Nibbles::from_bytes(b"key1", true);
         let compact = n.encode_compact();
         let n2 = Nibbles::from_compact(compact).unwrap();
         let (raw, is_leaf) = n2.encode_raw();

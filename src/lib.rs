@@ -37,7 +37,6 @@
 //! ```
 
 mod nibbles;
-mod node;
 mod tests;
 
 mod db;

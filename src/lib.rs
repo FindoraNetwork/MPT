@@ -41,6 +41,7 @@ mod tests;
 
 mod db;
 mod errors;
+mod hasher;
 mod trie;
 
 pub use db::{Database, MemoryDB};

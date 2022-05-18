@@ -18,17 +18,19 @@ pub trait Database: Send + Sync {
     fn contains(&self, key: &[u8]) -> Result<bool, Self::Error>;
 
     /// Insert data into the cache.
-    fn insert(&self, key: Vec<u8>, value: Vec<u8>) -> Result<(), Self::Error>;
+    fn insert(&self, key: &[u8], value: &[u8]) -> Result<(), Self::Error>;
 
     /// Removes a key from the cache, returning the data at the key if the key was previously in the map.
     fn remove(&self, key: &[u8]) -> Result<Option<Vec<u8>>, Self::Error>;
 
     /// Insert a batch of data into the cache.
-    fn insert_batch(&self, keys: Vec<Vec<u8>>, values: Vec<Vec<u8>>) -> Result<(), Self::Error> {
-        for i in 0..keys.len() {
-            let key = keys[i].clone();
-            let value = values[i].clone();
-            self.insert(key, value)?;
+    fn insert_batch<K, V>(&self, keys: &[K], values: &[V]) -> Result<(), Self::Error>
+    where
+        K: AsRef<[u8]>,
+        V: AsRef<[u8]>,
+    {
+        for (key, value) in keys.iter().zip(values) {
+            self.insert(key.as_ref(), value.as_ref())?;
         }
         Ok(())
     }
@@ -75,8 +77,8 @@ impl Database for MemoryDB {
         Ok(self.storage.read().get(key).cloned())
     }
 
-    fn insert(&self, key: Vec<u8>, value: Vec<u8>) -> Result<(), Self::Error> {
-        self.storage.write().insert(key, value);
+    fn insert(&self, key: &[u8], value: &[u8]) -> Result<(), Self::Error> {
+        self.storage.write().insert(key.to_vec(), value.to_vec());
         Ok(())
     }
 
@@ -113,9 +115,7 @@ mod tests {
     #[test]
     fn test_memdb_get() {
         let memdb = MemoryDB::new(true);
-        memdb
-            .insert(b"test-key".to_vec(), b"test-value".to_vec())
-            .unwrap();
+        memdb.insert(b"test-key", b"test-value").unwrap();
         let v = memdb.get(b"test-key").unwrap().unwrap();
 
         assert_eq!(v, b"test-value")
@@ -124,7 +124,7 @@ mod tests {
     #[test]
     fn test_memdb_contains() {
         let memdb = MemoryDB::new(true);
-        memdb.insert(b"test".to_vec(), b"test".to_vec()).unwrap();
+        memdb.insert(b"test", b"test").unwrap();
 
         let contains = memdb.contains(b"test").unwrap();
         assert!(contains)
@@ -133,7 +133,7 @@ mod tests {
     #[test]
     fn test_memdb_remove() {
         let memdb = MemoryDB::new(true);
-        memdb.insert(b"test".to_vec(), b"test".to_vec()).unwrap();
+        memdb.insert(b"test", b"test").unwrap();
 
         memdb.remove(b"test").unwrap();
         let contains = memdb.contains(b"test").unwrap();

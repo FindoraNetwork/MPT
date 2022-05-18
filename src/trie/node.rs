@@ -3,7 +3,7 @@
 
 use crate::nibbles::Nibbles;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Node {
     Leaf(LeafNode),
     Extension(ExtensionNode),
@@ -35,19 +35,15 @@ impl Node {
     pub fn into_box(self) -> Box<Self> {
         Box::new(self)
     }
-
-    pub unsafe fn from_raw(ptr: *mut Self) -> Self {
-        *Box::from_raw(ptr)
-    }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LeafNode {
     pub key: Nibbles,
     pub value: Vec<u8>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BranchNode {
     //[Box<Node>;16] is very larger than others, this can reduce the size of Node.
     childrens: Vec<Option<Box<Node>>>,
@@ -85,6 +81,10 @@ impl BranchNode {
         self.childrens[index].as_deref()
     }
 
+    pub unsafe fn get_child_uncheckd(&self, index: usize) -> Option<&Node> {
+        self.childrens.get_unchecked(index).as_deref()
+    }
+
     pub fn used_indexes(&self) -> Vec<usize> {
         let mut used_indexes = Vec::with_capacity(16);
         for (index, node) in self.childrens.iter().enumerate() {
@@ -96,22 +96,14 @@ impl BranchNode {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ExtensionNode {
     pub prefix: Nibbles,
     //If node is None, it must be deleted.
     pub node: Option<Box<Node>>,
 }
 
-// impl Drop for ExtensionNode {
-//     fn drop(&mut self) {
-//         if let Some(ptr) = self.node {
-//             unsafe { Box::from_raw(ptr.as_ptr()) };
-//         }
-//     }
-// }
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct HashNode {
     pub hash: Vec<u8>,
 }

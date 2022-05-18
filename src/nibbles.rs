@@ -1,4 +1,3 @@
-use bytes::Bytes;
 /// About nibble
 /// Briefly, a nibble is just a hex char, it is desgined for the BranchNode.
 ///
@@ -18,17 +17,17 @@ use bytes::Bytes;
 /// About HP-encode（Hex-Prefix Encoding ）
 /// beacuse the hex encode used in nibble, one byte become two bytes, it's not good for serialization.
 /// we use Hp-encode to compress nibbles.
-use std::{cmp::min, ops::RangeBounds};
+use std::cmp::min;
 
 use crate::TrieError;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Nibbles {
-    hex_data: Bytes,
+    hex_data: Vec<u8>,
 }
 
 impl Nibbles {
-    pub(crate) fn from_hex_unchecked(hex_data: Bytes) -> Self {
+    pub(crate) fn from_hex_unchecked(hex_data: Vec<u8>) -> Self {
         Nibbles { hex_data }
     }
 
@@ -41,9 +40,7 @@ impl Nibbles {
         if is_leaf {
             hex_data.push(16);
         }
-        Nibbles {
-            hex_data: Bytes::from(hex_data),
-        }
+        Nibbles { hex_data }
     }
 
     pub fn from_compact(compact: Vec<u8>) -> Result<Self, TrieError> {
@@ -70,9 +67,7 @@ impl Nibbles {
             hex.push(16);
         }
 
-        Ok(Nibbles {
-            hex_data: Bytes::from(hex),
-        })
+        Ok(Nibbles { hex_data: hex })
     }
 
     pub fn is_leaf(&self) -> bool {
@@ -154,12 +149,12 @@ impl Nibbles {
 
     #[inline(always)]
     pub fn offset(&self, index: usize) -> Nibbles {
-        self.slice(index..self.hex_data.len())
+        self.slice(index, self.hex_data.len())
     }
 
     #[inline(always)]
-    pub fn slice(&self, range: impl RangeBounds<usize>) -> Nibbles {
-        Nibbles::from_hex_unchecked(self.hex_data.slice(range))
+    pub fn slice(&self, start: usize, end: usize) -> Nibbles {
+        Nibbles::from_hex_unchecked(self.hex_data[start..end].to_owned())
     }
 
     #[inline(always)]
@@ -172,24 +167,24 @@ impl Nibbles {
         let mut hex_data = Vec::with_capacity(len);
         hex_data.extend_from_slice(self.get_data());
         hex_data.extend_from_slice(b.get_data());
-        Nibbles::from_hex_unchecked(Bytes::from(hex_data))
+        Nibbles::from_hex_unchecked(hex_data)
     }
 
-    // pub fn extend(&mut self, b: &Nibbles) {
-    //     self.hex_data.extend_from_slice(b.get_data());
-    // }
+    pub fn extend(&mut self, b: &Nibbles) {
+        self.hex_data.extend_from_slice(b.get_data());
+    }
 
     pub fn truncate(&mut self, len: usize) {
-        let _ = self.hex_data.split_off(len - 1);
+        self.hex_data.truncate(len);
     }
 
-    // pub fn pop(&mut self) -> Option<u8> {
-    //     self.hex_data.pop()
-    // }
+    pub fn pop(&mut self) -> Option<u8> {
+        self.hex_data.pop()
+    }
 
-    // pub fn push(&mut self, e: u8) {
-    //     self.hex_data.push(e)
-    // }
+    pub fn push(&mut self, e: u8) {
+        self.hex_data.push(e);
+    }
 }
 
 #[cfg(test)]

@@ -16,13 +16,6 @@ impl Node {
         Node::Leaf(LeafNode { key, value })
     }
 
-    // pub fn new_branch(childrens: [Option<Box<Node>>; 16], value: Option<Vec<u8>>) -> Self {
-    //     Node::Branch(BranchNode {
-    //         childrens,
-    //         value,
-    //     })
-    // }
-
     pub fn new_extension(prefix: Nibbles, node: Node) -> Self {
         let node = Some(node.into_box());
         Node::Extension(ExtensionNode { prefix, node })

@@ -15,12 +15,12 @@ documentation = "https://docs.rs/cita_trie"
 parking_lot = "0.11"
 bytes = "1"
 rlp = "0.5"
-tiny_keccak = "2"
+tiny-keccak = { version = "2", features = ["keccak"] }
 thiserror = "1.0"
+hex = "0.4"
 
 [dev-dependencies]
 rand = "0.6.3"
-hex = "0.4"
 criterion = "0.2.10"
 ethereum-types = "0.5.2"
 uuid = { version = "0.7", features = ["serde", "v4"] }

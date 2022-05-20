@@ -1,19 +1,20 @@
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
-use std::ptr::NonNull;
 use std::sync::Arc;
 
 use bytes::{Bytes, BytesMut};
-use hasher::Hasher;
 use rlp::{Prototype, Rlp, RlpStream};
 
 use crate::db::{Database, MemoryDB};
 use crate::errors::TrieError;
+use crate::hasher::Hasher;
 use crate::nibbles::Nibbles;
+use iterator::TrieIterator;
 use node::{BranchNode, Node};
 
 pub type TrieResult<T> = Result<T, TrieError>;
 
+mod iterator;
 mod node;
 
 #[derive(Debug)]
@@ -36,181 +37,15 @@ where
     error: Option<TrieError>,
 }
 
-#[derive(Copy, Clone, Debug)]
-enum TraceStatus {
-    Start,
-    Doing,
-    Child(u8),
-    End,
-}
-
-#[derive(Clone, Debug)]
-struct TraceNode {
-    node: Option<NonNull<Node>>,
-    status: TraceStatus,
-}
-
-impl TraceNode {
-    fn advance(&mut self) {
-        self.status = match &self.status {
-            TraceStatus::Start => TraceStatus::Doing,
-            TraceStatus::Doing => match self.node.map(|x| unsafe { x.as_ref() }) {
-                Some(Node::Branch(_)) => TraceStatus::Child(0),
-                _ => TraceStatus::End,
-            },
-            TraceStatus::Child(i) if *i < 15 => TraceStatus::Child(i + 1),
-            _ => TraceStatus::End,
-        }
-    }
-
-    fn new(node: Option<NonNull<Node>>) -> Self {
-        TraceNode {
-            node,
-            status: TraceStatus::Start,
-        }
-    }
-}
-
-impl From<Option<&Node>> for TraceNode {
-    fn from(node: Option<&Node>) -> TraceNode {
-        TraceNode {
-            node: node.map(|n| unsafe { NonNull::new_unchecked(n as *const Node as *mut Node) }),
-            status: TraceStatus::Start,
-        }
-    }
-}
-
-pub struct TrieIterator<'a, D, H>
-where
-    D: Database,
-    H: Hasher + Clone,
-{
-    trie: &'a PatriciaTrie<D, H>,
-    nibble: Nibbles,
-    nodes: Vec<TraceNode>,
-    drops: Vec<NonNull<Node>>,
-}
-
-impl<'a, D, H> Drop for TrieIterator<'a, D, H>
-where
-    D: Database,
-    H: Hasher + Clone,
-{
-    fn drop(&mut self) {
-        while let Some(ptr) = self.drops.pop() {
-            unsafe { Box::from_raw(ptr.as_ptr()) };
-        }
-    }
-}
-
-impl<'a, D, H> Iterator for TrieIterator<'a, D, H>
-where
-    D: Database,
-    H: Hasher + Clone,
-{
-    type Item = (Vec<u8>, Vec<u8>);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            let now = self.nodes.last().cloned();
-            if let Some(now) = now {
-                self.nodes.last_mut().unwrap().advance();
-
-                match (now.status, now.node.map(|ptr| unsafe { ptr.as_ref() })) {
-                    (TraceStatus::End, node) => {
-                        match node {
-                            Some(Node::Leaf(ref leaf)) => {
-                                let cur_len = self.nibble.len();
-                                self.nibble.truncate(cur_len - leaf.key.len());
-                            }
-
-                            Some(Node::Extension(ref ext)) => {
-                                let cur_len = self.nibble.len();
-                                self.nibble.truncate(cur_len - ext.prefix.len());
-                            }
-
-                            Some(Node::Branch(_)) => {
-                                self.nibble.pop();
-                            }
-                            _ => {}
-                        }
-                        self.nodes.pop();
-                    }
-
-                    (TraceStatus::Doing, Some(Node::Extension(ext))) => {
-                        self.nibble.extend(&ext.prefix);
-                        self.nodes.push(ext.node.as_deref().into());
-                    }
-
-                    (TraceStatus::Doing, Some(Node::Leaf(leaf))) => {
-                        self.nibble.extend(&leaf.key);
-                        return Some((self.nibble.encode_raw().0, leaf.value.clone()));
-                    }
-
-                    (TraceStatus::Doing, Some(Node::Branch(branch))) => {
-                        let value = branch.value.clone();
-                        if let Some(data) = value {
-                            return Some((self.nibble.encode_raw().0, data));
-                        } else {
-                            continue;
-                        }
-                    }
-
-                    (TraceStatus::Doing, Some(Node::Hash(hash_node))) => {
-                        if let Ok(n) = self.trie.recover_from_db(&hash_node.hash.clone()) {
-                            self.nodes.pop();
-                            if let Some(node) = n {
-                                let node_ptr = unsafe {
-                                    NonNull::new_unchecked(Box::into_raw(Box::new(node)))
-                                };
-                                self.drops.push(node_ptr);
-                                self.nodes.push(TraceNode::new(Some(node_ptr)));
-                            } else {
-                                self.nodes.push(None.into());
-                            }
-                        } else {
-                            //error!();
-                            return None;
-                        }
-                    }
-
-                    (TraceStatus::Child(i), Some(Node::Branch(branch))) => {
-                        if i == 0 {
-                            self.nibble.push(0);
-                        } else {
-                            self.nibble.pop();
-                            self.nibble.push(i);
-                        }
-                        self.nodes
-                            .push(unsafe { branch.get_child_uncheckd(i as usize).into() });
-                    }
-
-                    (_, None) => {
-                        self.nodes.pop();
-                    }
-                    _ => {}
-                }
-            } else {
-                return None;
-            }
-        }
-    }
-}
-
 impl<D, H> PatriciaTrie<D, H>
 where
     D: Database,
     H: Hasher + Clone,
 {
     pub fn iter(&self) -> TrieIterator<D, H> {
-        let nodes = vec![self.root.as_deref().into()];
-        TrieIterator {
-            trie: self,
-            nibble: Nibbles::from_bytes(&[], false),
-            nodes,
-            drops: Vec::with_capacity(32),
-        }
+        TrieIterator::new(self)
     }
+
     pub fn new(db: Arc<D>, hasher: H) -> Self {
         Self {
             root: None,
@@ -326,7 +161,7 @@ where
         // if value.is_empty() {
         //     self.remove(&key)?;
         //     return Ok(());
-        // } [TODO]
+        // }
         let key = Nibbles::from_bytes(key, true);
         let child = self.root.take();
         let node = self.insert_at(child, key, value).into_box();
@@ -777,12 +612,15 @@ where
         }
 
         let data = self.encode_raw(n);
+
         // Nodes smaller than 32 bytes are stored inside their parent,
         // Nodes equal to 32 bytes are returned directly
         if data.len() < H::LENGTH {
+            println!("short:{}", hex::encode(&data));
             data.to_vec()
         } else {
             let hash = self.hasher.digest(&data);
+            println!("data:{}, hash:{}", hex::encode(&data), hex::encode(&hash));
             self.cache.insert(hash.clone(), data.into());
             self.gen_keys.insert(hash.clone());
             hash
@@ -948,36 +786,12 @@ where
 mod tests {
     use super::PatriciaTrie;
     use crate::db::{Database, MemoryDB};
-    use hasher::{Hasher, HasherKeccak as RawHasherKeccak};
+    use crate::hasher::{Hasher, HasherKeccak};
     use rand::distributions::Alphanumeric;
     use rand::seq::SliceRandom;
     use rand::{thread_rng, Rng};
     use std::collections::{HashMap, HashSet};
-    use std::fmt::{self, Debug};
     use std::sync::Arc;
-
-    #[derive(Clone)]
-    struct HasherKeccak(Arc<RawHasherKeccak>);
-    impl Hasher for HasherKeccak {
-        const LENGTH: usize = 32;
-
-        fn digest(&self, data: &[u8]) -> Vec<u8> {
-            self.0.digest(data)
-        }
-    }
-
-    impl HasherKeccak {
-        fn new() -> Self {
-            HasherKeccak(Arc::new(RawHasherKeccak::new()))
-        }
-    }
-
-    impl Debug for HasherKeccak {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            f.write_str("HasherKeccak").unwrap();
-            Ok(())
-        }
-    }
 
     #[test]
     fn test_trie_insert() {

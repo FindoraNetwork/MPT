@@ -46,4 +46,5 @@ mod trie;
 
 pub use db::{Database, MemoryDB};
 pub use errors::TrieError;
+pub use hasher::{Hasher, HasherKeccak};
 pub use trie::PatriciaTrie;

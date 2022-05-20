@@ -1,8 +1,8 @@
 use tiny_keccak::Hasher as H;
 
-use crate::Hasher;
+use super::Hasher;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct HasherKeccak {}
 
 impl HasherKeccak {

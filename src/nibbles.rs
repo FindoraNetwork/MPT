@@ -1,22 +1,26 @@
-/// About nibble
-/// Briefly, a nibble is just a hex char, it is desgined for the BranchNode.
-///
-/// For example.
-/// the key is H160 which contains 20 bytes, the first bytes have u8::MAX branches, in this design, our BranchNode would be like:
-///
-///
-///                          BranchNode
-///              /    /     / ......  \     \    
-///           Node  Node  None      None   None   x 256
-///
-/// this would be a [Node; 256] that contains many many None child here, it wastes and would not be friend with stack.
-/// the solution here is the hex encode; "1111" is just 15, so for the BranchNode, the chlid have only 16.
-/// wasting is largely alleviated, but the deepth increase double.
-/// all this is engineering consideration.
-///
-/// About HP-encode（Hex-Prefix Encoding ）
-/// beacuse the hex encode used in nibble, one byte become two bytes, it's not good for serialization.
-/// we use Hp-encode to compress nibbles.
+// ### About nibble
+// Briefly, a nibble is just a hex char, it is desgined for the BranchNode.
+//
+// For example.
+// the key is H160 which contains 20 bytes, the first bytes have u8::MAX branches, in this design, our BranchNode would be like:
+//
+//
+//                          BranchNode
+//              /    /     / ......  \     \
+//           Node  Node  None      None   None   x 256
+//
+// this would be a [Node; 256] that contains many many None child here, it wastes and would not be friend with stack.
+// the solution here is the hex encode; "1111" is just 15, so for the BranchNode, the chlid have only 16.
+// wasting is largely alleviated, but the deepth increase double.
+// all this is engineering consideration.
+//
+// About HP-encode（Hex-Prefix Encoding ）
+// beacuse the hex encode used in nibble, one byte become two bytes, it's not good for serialization.
+// we use Hp-encode to compress nibbles.
+//
+// Nibbles used for Leaf node end with 0x10(16).
+// 
+
 use std::cmp::min;
 
 use crate::TrieError;

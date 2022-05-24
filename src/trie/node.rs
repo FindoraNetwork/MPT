@@ -1,6 +1,3 @@
-// use std::cell::RefCell;
-// use std::rc::Rc;
-
 use crate::nibbles::Nibbles;
 
 #[derive(Debug, Clone)]
@@ -30,15 +27,26 @@ impl Node {
     }
 }
 
+/// Leaf Node, a leaf node means there must be a non-empty value,
+/// insert a empty value means remove by the key.
 #[derive(Debug, Clone)]
 pub struct LeafNode {
     pub key: Nibbles,
     pub value: Vec<u8>,
 }
 
+/// A Branch node is a 16-way lookup node, it also can store a value if a "leaf" reachs here.
+/// It looks like:
+///    BranchNode[0,1,2,3,4,5,6,7,8,9,a,b,c,d,e,f] -> Option<V>
+///                 /       /           \        \
+///              1 /     5 /             \ b      \f
+///               /       /               \        \
+///            Child   Child             Child     Child
+///
 #[derive(Debug, Clone)]
 pub struct BranchNode {
-    //[Box<Node>;16] is very larger than others, this can reduce the size of Node.
+    //[Box<Option<Node>>;16] is very larger than others, this can reduce the size of Node,
+    // Box<[Option<Node>;16]> looks unnecessary because it works like Vec<Option<Node>> (both on heap).
     childrens: Vec<Option<Box<Node>>>,
     pub value: Option<Vec<u8>>,
 }
@@ -89,6 +97,11 @@ impl BranchNode {
     }
 }
 
+/// A ExtensionNode exist mean there will be branch after this.
+/// There is some rules for Extension node.
+/// 1. If `node` is None, it would be deleted.
+/// 2. Extension(prefix1) -> Extension(prefix2) would be reduced to Extension(prefix1 + prefix2).
+/// 3. Extension(prefix1) -> Leaf(prefix2) would be reduced to Leaf(prefix1 + prefix2).
 #[derive(Debug, Clone)]
 pub struct ExtensionNode {
     pub prefix: Nibbles,

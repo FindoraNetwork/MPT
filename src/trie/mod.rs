@@ -158,10 +158,10 @@ where
 
     /// Inserts value into trie and modifies it if it exists
     pub fn insert(&mut self, key: &[u8], value: Vec<u8>) -> TrieResult<()> {
-        // if value.is_empty() {
-        //     self.remove(&key)?;
-        //     return Ok(());
-        // }
+        if value.is_empty() {
+            self.remove(&key)?;
+            return Ok(());
+        }
         let key = Nibbles::from_bytes(key, true);
         let child = self.root.take();
         let node = self.insert_at(child, key, value).into_box();
@@ -616,11 +616,9 @@ where
         // Nodes smaller than 32 bytes are stored inside their parent,
         // Nodes equal to 32 bytes are returned directly
         if data.len() < H::LENGTH {
-            println!("short:{}", hex::encode(&data));
             data.to_vec()
         } else {
             let hash = self.hasher.digest(&data);
-            println!("data:{}, hash:{}", hex::encode(&data), hex::encode(&hash));
             self.cache.insert(hash.clone(), data.into());
             self.gen_keys.insert(hash.clone());
             hash
@@ -629,7 +627,7 @@ where
 
     fn encode_raw(&mut self, n: Option<&Node>) -> BytesMut {
         match n {
-            None => BytesMut::from(rlp::NULL_RLP.as_slice()),
+            None => BytesMut::from(&rlp::NULL_RLP[..]),
             Some(node) => match node {
                 Node::Leaf(leaf) => {
                     let mut stream = RlpStream::new_list(2);

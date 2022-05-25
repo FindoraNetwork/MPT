@@ -6,5 +6,8 @@ pub trait Hasher {
 
 mod blake3;
 mod keccak;
+mod sha2;
 
-pub use keccak::HasherKeccak;
+pub use self::blake3::Blake3;
+pub use self::keccak::HasherKeccak;
+pub use self::sha2::{Sha256, Sha512};

@@ -2,8 +2,9 @@ use tiny_keccak::Hasher as H;
 
 use super::Hasher;
 
+///Hasher of Keccak.
 #[derive(Clone, Copy, Debug)]
-pub struct HasherKeccak {}
+pub struct HasherKeccak;
 
 impl HasherKeccak {
     pub fn new() -> Self {

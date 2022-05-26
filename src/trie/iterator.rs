@@ -1,6 +1,7 @@
-use super::{node::Node, Nibbles, PatriciaTrie};
+use super::{node::Node, PatriciaTrie};
 use crate::db::Database;
 use crate::hasher::Hasher;
+use crate::nibbles::Nibbles;
 use std::ptr::NonNull;
 
 #[derive(Copy, Clone, Debug)]

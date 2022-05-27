@@ -4,6 +4,12 @@ use super::Hasher;
 #[derive(Clone, Copy, Debug)]
 pub struct Blake3;
 
+impl Blake3 {
+    pub fn new() -> Self {
+        Blake3{}
+    }
+}
+
 impl Hasher for Blake3 {
     const LENGTH: usize = 32;
 

@@ -85,8 +85,8 @@ mod test{
 
     use super::SecureTrie;
 
-    use crate::hasher::{HasherKeccak, Blake3};
-    use crate::db::MemoryDB;
+    use crate::hasher::{Hasher, HasherKeccak, Blake3};
+    use crate::db::{Database, MemoryDB};
 
     use rand::{
         thread_rng,
@@ -94,6 +94,7 @@ mod test{
         Rng,
         seq::SliceRandom,
     };
+
 
     #[test]
     fn test_insert() {
@@ -290,6 +291,36 @@ mod test{
 
         let v = trie.get(b"test").unwrap().map(|x| x.into_owned());
         assert_eq!(Some(b"test".to_vec()), v);
+    }
+
+    #[test]
+    fn test_delete_stale_keys_with_random_insert_and_delete() {
+        let memdb = Arc::new(MemoryDB::new(true));
+        let mut trie = SecureTrie::new(memdb, HasherKeccak::new(), Blake3::new());
+
+        let mut rng = rand::thread_rng();
+        let mut keys = vec![];
+        for _ in 0..100 {
+            let random_bytes: Vec<u8> = (0..rng.gen_range(2, 30))
+                .map(|_| rand::random::<u8>())
+                .collect();
+            trie.insert(&random_bytes, random_bytes.clone()).unwrap();
+            keys.push(random_bytes.clone());
+        }
+        trie.root().unwrap();
+        let slice = &mut keys;
+        slice.shuffle(&mut rng);
+
+        for key in slice.iter() {
+            trie.remove(key).unwrap();
+        }
+        trie.root().unwrap();
+
+        let empty_node_key = HasherKeccak::new().digest(&rlp::NULL_RLP);
+        let value = trie.tire.db.get(
+            &empty_node_key,
+        ).unwrap().unwrap();
+        assert_eq!(value, &rlp::NULL_RLP);
     }
 
     // #[test]

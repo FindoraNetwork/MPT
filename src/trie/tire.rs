@@ -21,10 +21,10 @@ where
     D: Database,
     H: Hasher,
 {
-    pub(super) root: Option<Box<Node>>,
+    pub(crate) root: Option<Box<Node>>,
     root_hash: Vec<u8>,
 
-    db: Arc<D>,
+    pub(crate) db: Arc<D>,
     hasher: H,
     backup_db: Option<Arc<D>>,
     cache: HashMap<Vec<u8>, Bytes>,

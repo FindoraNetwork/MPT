@@ -1,7 +1,7 @@
 [package]
 name = "cita_trie"
 version = "3.0.1"
-authors = ["yejiayu <yejiayu.fe@gmail.com>"]
+authors = ["yejiayu <yejiayu.fe@gmail.com>", "sahaitao <228164917@qq.com>"]
 description = "Modified Patricia Tree (aka Trie)."
 license = "Apache-2.0"
 edition = "2018"

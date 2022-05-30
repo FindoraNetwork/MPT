@@ -15,11 +15,11 @@ mod trie_tests {
         for (k, v) in data.into_iter() {
             trie.insert(k, v.to_vec()).unwrap();
         }
-        let r = trie.root().unwrap();
+        let r = trie.commit().unwrap();
         let rs = format!("0x{}", hex::encode(r.clone()));
         assert_eq!(rs.as_str(), hash);
         let mut trie = PatriciaTrie::from(Arc::clone(&memdb), HasherKeccak::new(), r).unwrap();
-        let r2 = trie.root().unwrap();
+        let r2 = trie.commit().unwrap();
         let rs2 = format!("0x{}", hex::encode(r2));
         assert_eq!(rs2.as_str(), hash);
     }
@@ -555,8 +555,8 @@ mod trie_tests {
         trie.insert(b"doe", b"reindeer".to_vec()).unwrap();
         trie.insert(b"dog", b"puppy".to_vec()).unwrap();
         trie.insert(b"dogglesworth", b"cat".to_vec()).unwrap();
-        let root = trie.root().unwrap();
-        let r = format!("0x{}", hex::encode(trie.root().unwrap()));
+        let root = trie.commit().unwrap();
+        let r = format!("0x{}", hex::encode(trie.commit().unwrap()));
         assert_eq!(
             r.as_str(),
             "0x8aad789dff2f538bca5d8ea56e8abe10f4c7ba3a5dea95fea4cd6e7c3a1168d3"
@@ -624,7 +624,7 @@ mod trie_tests {
         for k in keys.clone().into_iter() {
             trie.insert(&k, k.clone()).unwrap();
         }
-        let root = trie.root().unwrap();
+        let root = trie.commit().unwrap();
         for k in keys.into_iter() {
             let proof = trie.get_proof(&k).unwrap();
             let value = trie.verify_proof(root.clone(), &k, proof).unwrap().unwrap();
@@ -636,7 +636,7 @@ mod trie_tests {
     fn test_proof_empty_trie() {
         let memdb = Arc::new(MemoryDB::new(true));
         let mut trie = PatriciaTrie::new(Arc::clone(&memdb), HasherKeccak::new());
-        trie.root().unwrap();
+        trie.commit().unwrap();
         let proof = trie.get_proof(b"not-exist").unwrap();
         assert_eq!(proof.len(), 0);
     }
@@ -646,7 +646,7 @@ mod trie_tests {
         let memdb = Arc::new(MemoryDB::new(true));
         let mut trie = PatriciaTrie::new(Arc::clone(&memdb), HasherKeccak::new());
         trie.insert(b"k", b"v".to_vec()).unwrap();
-        let root = trie.root().unwrap();
+        let root = trie.commit().unwrap();
         let proof = trie.get_proof(b"k").unwrap();
         assert_eq!(proof.len(), 1);
         let value = trie
@@ -656,7 +656,7 @@ mod trie_tests {
 
         // remove key does not affect the verify process
         trie.remove(b"k").unwrap();
-        let _root = trie.root().unwrap();
+        let _root = trie.commit().unwrap();
         let value = trie.verify_proof(root, b"k", proof).unwrap();
         assert_eq!(value, Some(b"v".to_vec()));
     }

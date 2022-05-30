@@ -10,6 +10,7 @@ use super::{
     node::{BranchNode, Node},
     TrieResult,
 };
+
 use crate::db::{Database, MemoryDB};
 use crate::errors::TrieError;
 use crate::hasher::Hasher;
@@ -179,12 +180,6 @@ where
             return Err(err);
         }
         Ok(removed)
-    }
-
-    /// Saves all the nodes in the db, clears the cache data, recalculates the root.
-    /// Returns the root hash of the trie.
-    pub fn root(&mut self) -> TrieResult<Vec<u8>> {
-        self.commit()
     }
 
     /// Prove constructs a merkle proof for key. The result contains all encoded nodes
@@ -556,7 +551,9 @@ where
         }
     }
 
-    fn commit(&mut self) -> TrieResult<Vec<u8>> {
+    /// Saves all the nodes in the db, clears the cache data, recalculates the root.
+    /// Returns the root hash of the trie.
+    pub fn commit(&mut self) -> TrieResult<Vec<u8>> {
         let root = self.root.take();
         let encoded = self.encode_node(root.as_deref());
         let root_hash = if encoded.len() < H::LENGTH {
@@ -866,7 +863,7 @@ mod tests {
             trie.insert(b"test23", b"test".to_vec()).unwrap();
             trie.insert(b"test33", b"test".to_vec()).unwrap();
             trie.insert(b"test44", b"test".to_vec()).unwrap();
-            trie.root().unwrap()
+            trie.commit().unwrap()
         };
 
         let mut trie =
@@ -875,7 +872,7 @@ mod tests {
         assert_eq!(Some(b"test".to_vec()), v1);
         let v2 = trie.get(b"test44").unwrap().map(|x| x.into_owned());
         assert_eq!(Some(b"test".to_vec()), v2);
-        let root2 = trie.root().unwrap();
+        let root2 = trie.commit().unwrap();
         assert_eq!(hex::encode(root), hex::encode(root2));
     }
 
@@ -941,7 +938,7 @@ mod tests {
             let memdb = Arc::new(MemoryDB::new(true));
             let mut trie = PatriciaTrie::new(memdb, HasherKeccak::new());
             trie.insert(k0.as_bytes(), v.as_bytes().to_vec()).unwrap();
-            trie.root().unwrap()
+            trie.commit().unwrap()
         };
 
         let root2 = {
@@ -949,9 +946,9 @@ mod tests {
             let mut trie = PatriciaTrie::new(memdb, HasherKeccak::new());
             trie.insert(k0.as_bytes(), v.as_bytes().to_vec()).unwrap();
             trie.insert(k1.as_bytes(), v.as_bytes().to_vec()).unwrap();
-            trie.root().unwrap();
+            trie.commit().unwrap();
             trie.remove(k1.as_ref()).unwrap();
-            trie.root().unwrap()
+            trie.commit().unwrap()
         };
 
         let root3 = {
@@ -959,12 +956,12 @@ mod tests {
             let mut trie1 = PatriciaTrie::new(Arc::clone(&memdb), HasherKeccak::new());
             trie1.insert(k0.as_bytes(), v.as_bytes().to_vec()).unwrap();
             trie1.insert(k1.as_bytes(), v.as_bytes().to_vec()).unwrap();
-            trie1.root().unwrap();
-            let root = trie1.root().unwrap();
+            trie1.commit().unwrap();
+            let root = trie1.commit().unwrap();
             let mut trie2 =
                 PatriciaTrie::from(Arc::clone(&memdb), HasherKeccak::new(), root).unwrap();
             trie2.remove(&k1.as_bytes().to_vec()).unwrap();
-            trie2.root().unwrap()
+            trie2.commit().unwrap()
         };
 
         assert_eq!(root1, root2);
@@ -1010,7 +1007,7 @@ mod tests {
         trie.insert(b"test23", b"test".to_vec()).unwrap();
         trie.insert(b"test33", b"test".to_vec()).unwrap();
         trie.insert(b"test44", b"test".to_vec()).unwrap();
-        trie.root().unwrap();
+        trie.commit().unwrap();
 
         let v = trie.get(b"test").unwrap().map(|x| x.into_owned());
         assert_eq!(Some(b"test".to_vec()), v);
@@ -1036,7 +1033,7 @@ mod tests {
             kv.iter().for_each(|(k, v)| {
                 trie.insert(&k, v.clone()).unwrap();
             });
-            root1 = trie.root().unwrap();
+            root1 = trie.commit().unwrap();
 
             trie.iter()
                 .for_each(|(k, v)| assert_eq!(kv.remove(&k).unwrap(), v));
@@ -1057,7 +1054,7 @@ mod tests {
                 trie.insert(&k, v.clone()).unwrap();
             });
 
-            trie.root().unwrap();
+            trie.commit().unwrap();
 
             let mut kv_delete = HashSet::new();
             kv_delete.insert(b"test".to_vec());
@@ -1070,7 +1067,7 @@ mod tests {
 
             kv2.retain(|k, _| !kv_delete.contains(k));
 
-            trie.root().unwrap();
+            trie.commit().unwrap();
             trie.iter()
                 .for_each(|(k, v)| assert_eq!(kv2.remove(&k).unwrap(), v));
             assert!(kv2.is_empty());

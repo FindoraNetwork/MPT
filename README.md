@@ -1,9 +1,5 @@
 ## CITA-Trie
 
-[![Latest Version](https://img.shields.io/crates/v/cita_trie.svg)](https://crates.io/crates/cita_trie)
-[![](https://travis-ci.org/cryptape/cita-trie.svg?branch=master)](https://travis-ci.org/cryptape/cita-trie)
-[![](https://img.shields.io/hexpm/l/plug.svg)](https://github.com/cryptape/cita-trie/blob/master/LICENSE)
-
 Rust implementation of the Modified Patricia Tree (aka Trie),
 
 The implementation is strongly inspired by [go-ethereum trie](https://github.com/ethereum/go-ethereum/tree/master/trie)
@@ -11,95 +7,87 @@ The implementation is strongly inspired by [go-ethereum trie](https://github.com
 ## Features
 
 - Implementation of the Modified Patricia Tree
-- Custom hash algorithm (Keccak is provided by default)
+- Custom hash algorithm (Keccak, Blake3, SHA2 is provided by default)
 - Custom storage interface
+- Is Sync.
 
 ## Example
 
 ```rust
-use std::sync::Arc;
+ use std::sync::Arc;
 
-use hasher::{Hasher, HasherKeccak}; // https://crates.io/crates/hasher
+ use cita_trie::MemoryDB;
+ use cita_trie::PatriciaTrie;
+ use cita_trie::hasher::{Hasher, HasherKeccak};
 
-use cita_trie::MemoryDB;
-use cita_trie::{PatriciaTrie, Trie};
+ fn main() {
+     let memdb = Arc::new(MemoryDB::new(true));
+     let hasher = HasherKeccak::new();
 
-fn main() {
-    let memdb = Arc::new(MemoryDB::new(true));
-    let hahser = Arc::new(HasherKeccak::new());
+     let key = b"test-key";
+     let value = b"test-value";
 
-    let key = "test-key".as_bytes();
-    let value = "test-value".as_bytes();
+     let root = {
+         let mut trie = PatriciaTrie::new(Arc::clone(&memdb), hasher);
+         trie.insert(key, value.to_vec()).unwrap();
 
-    let root = {
-        let mut trie = PatriciaTrie::new(Arc::clone(&memdb), Arc::clone(&hasher));
-        trie.insert(key, value).unwrap();
+         let v = trie.get(key).unwrap().map(|v|v.into_owned());
+         assert_eq!(Some(value.to_vec()), v);
+         trie.commit().unwrap()
+     };
 
-        let v = trie.get(key).unwrap();
-        assert_eq!(Some(value.to_vec()), v);
-        trie.root().unwrap()
-    };
-
-    let mut trie = PatriciaTrie::from(Arc::clone(&memdb), Arc::clone(&hasher), &root);
-    let exists = trie.contains(key).unwrap();
-    assert_eq!(exists, true);
-    let removed = trie.remove(key).unwrap();
-    assert_eq!(removed, true);
-    let new_root = trie.root().unwrap();
-    println!("new root = {:?}", new_root);
-
-}
-
+     let mut trie = PatriciaTrie::from(Arc::clone(&memdb), hasher, root.clone()).unwrap();
+     let exists = trie.contains(key).unwrap();
+     assert!(exists);
+     let removed = trie.remove(key).unwrap();
+     assert!(removed);
+     let new_root = trie.commit().unwrap();
+     println!("new root = {:?}", new_root);
+ }
 ```
 
 ## Benchmark
+#### Environment: Ubuntu 20.04 (WSL2),  CPU: i7-8550U CPU @ 1.80GHz, Memory: 32G.
 
 ```sh
 cargo bench
 
 Gnuplot not found, disabling plotting
-insert one              time:   [1.6564 us 1.7287 us 1.7955 us]
-                        change: [-2.2715% +1.5151% +5.1789%] (p = 0.42 > 0.05)
-                        No change in performance detected.
+insert one              time:   [605.00 ns 641.90 ns 677.84 ns]
+Found 3 outliers among 100 measurements (3.00%)
+  1 (1.00%) high mild
+  2 (2.00%) high severe
 
-insert 1k               time:   [1.1620 ms 1.1763 ms 1.1942 ms]
-                        change: [-2.3339% +0.7190% +3.7809%] (p = 0.65 > 0.05)
-                        No change in performance detected.
-Found 16 outliers among 100 measurements (16.00%)
-  9 (9.00%) high mild
-  7 (7.00%) high severe
-
-insert 10k              time:   [13.491 ms 13.677 ms 13.891 ms]
-                        change: [-5.3670% -1.2847% +2.8328%] (p = 0.54 > 0.05)
-                        No change in performance detected.
-Found 10 outliers among 100 measurements (10.00%)
-  9 (9.00%) high mild
+insert 1k               time:   [301.21 us 302.78 us 304.48 us]
+Found 2 outliers among 100 measurements (2.00%)
+  1 (1.00%) high mild
   1 (1.00%) high severe
 
-get based 10k           time:   [1.0707 us 1.0965 us 1.1270 us]
-                        change: [-10.331% -6.5107% -2.6793%] (p = 0.00 < 0.05)
-                        Performance has improved.
-Found 11 outliers among 100 measurements (11.00%)
-  11 (11.00%) high mild
-
-remove 1k               time:   [538.54 us 545.18 us 553.96 us]
-                        change: [-7.3508% -0.7110% +7.0860%] (p = 0.86 > 0.05)
-                        No change in performance detected.
-Found 12 outliers among 100 measurements (12.00%)
+insert 10k              time:   [3.8509 ms 3.8748 ms 3.8994 ms]
+Found 5 outliers among 100 measurements (5.00%)
   5 (5.00%) high mild
-  7 (7.00%) high severe
 
-remove 10k              time:   [5.7277 ms 5.7780 ms 5.8367 ms]
-                        change: [-18.778% -5.4831% +10.503%] (p = 0.51 > 0.05)
-                        No change in performance detected.
-Found 11 outliers among 100 measurements (11.00%)
-  1 (1.00%) high mild
-  10 (10.00%) high severe
+get based 10k           time:   [214.48 ns 218.37 ns 222.90 ns]
+Found 17 outliers among 100 measurements (17.00%)
+  1 (1.00%) low severe
+  7 (7.00%) low mild
+  7 (7.00%) high mild
+  2 (2.00%) high severe
+
+remove 1k               time:   [114.27 us 116.46 us 119.23 us]
+Found 7 outliers among 100 measurements (7.00%)
+  4 (4.00%) high mild
+  3 (3.00%) high severe
+
+remove 10k              time:   [1.1713 ms 1.1823 ms 1.1953 ms]
+Found 12 outliers among 100 measurements (12.00%)
+  3 (3.00%) high mild
+  9 (9.00%) high severe
 ```
 
-### Custom hash algorithm
-See: https://crates.io/crates/hasher
+### Custom Hasher
+cita_trie::Hasher;
 
 ### Custom storage
+cita_trie::db::Database;
 
-[Refer](https://github.com/cryptape/cita-trie/blob/master/src/db.rs)

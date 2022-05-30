@@ -8,6 +8,6 @@ mod blake3;
 mod keccak;
 mod sha2;
 
-pub use self::blake3::Blake3;
+pub use self::blake3::HasherBlake3;
 pub use self::keccak::HasherKeccak;
-pub use self::sha2::{Sha256, Sha512};
+pub use self::sha2::{HasherSha256, HasherSha512};

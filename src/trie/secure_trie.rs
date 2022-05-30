@@ -44,16 +44,13 @@ impl<D: Database, H: Hasher, HK: Hasher> SecureTrie<D, H, HK> {
     }
     /// Saves all the nodes in the db, clears the cache data, recalculates the root.
     /// Returns the root hash of the trie.
-    pub fn root(&mut self) -> TrieResult<Vec<u8>> {
-        self.tire.root()
+    pub fn commit(&mut self) -> TrieResult<Vec<u8>> {
+        self.tire.commit()
     }
 
-    pub fn from(db:Arc<D>, hasher: H, key_hasher: HK, root_hash: Vec<u8>) -> TrieResult<Self> {
+    pub fn from(db: Arc<D>, hasher: H, key_hasher: HK, root_hash: Vec<u8>) -> TrieResult<Self> {
         let tire = PatriciaTrie::from(db, hasher, root_hash)?;
-        Ok(SecureTrie{
-            tire,
-            key_hasher,
-        })
+        Ok(SecureTrie { tire, key_hasher })
     }
 
     /// Prove constructs a merkle proof for key. The result contains all encoded nodes
@@ -80,33 +77,27 @@ impl<D: Database, H: Hasher, HK: Hasher> SecureTrie<D, H, HK> {
 }
 
 #[cfg(test)]
-mod test{
+mod test {
     use std::sync::Arc;
 
     use super::SecureTrie;
 
-    use crate::hasher::{Hasher, HasherKeccak, Blake3};
     use crate::db::{Database, MemoryDB};
+    use crate::hasher::{Hasher, HasherBlake3, HasherKeccak};
 
-    use rand::{
-        thread_rng,
-        distributions::Alphanumeric,
-        Rng,
-        seq::SliceRandom,
-    };
-
+    use rand::{distributions::Alphanumeric, seq::SliceRandom, thread_rng, Rng};
 
     #[test]
     fn test_insert() {
         let memdb = Arc::new(MemoryDB::new(true));
-        let mut trie = SecureTrie::new(memdb, HasherKeccak::new(), Blake3::new());
+        let mut trie = SecureTrie::new(memdb, HasherKeccak::new(), HasherBlake3::new());
         trie.insert(b"test", b"test".to_vec()).unwrap();
     }
 
     #[test]
     fn test_trie_get() {
         let memdb = Arc::new(MemoryDB::new(true));
-        let mut trie = SecureTrie::new(memdb, HasherKeccak::new(), Blake3::new());
+        let mut trie = SecureTrie::new(memdb, HasherKeccak::new(), HasherBlake3::new());
         trie.insert(b"test", b"test".to_vec()).unwrap();
         let v = trie.get(b"test").unwrap();
         assert_eq!(b"test", v.unwrap().as_slice())
@@ -115,7 +106,7 @@ mod test{
     #[test]
     fn test_trie_random_insert() {
         let memdb = Arc::new(MemoryDB::new(true));
-        let mut trie = SecureTrie::new(memdb, HasherKeccak::new(), Blake3::new());
+        let mut trie = SecureTrie::new(memdb, HasherKeccak::new(), HasherBlake3::new());
 
         for _ in 0..10000 {
             let rand_str: String = thread_rng().sample_iter(&Alphanumeric).take(30).collect();
@@ -130,7 +121,7 @@ mod test{
     #[test]
     fn test_trie_contains() {
         let memdb = Arc::new(MemoryDB::new(true));
-        let mut trie = SecureTrie::new(memdb, HasherKeccak::new(), Blake3::new());
+        let mut trie = SecureTrie::new(memdb, HasherKeccak::new(), HasherBlake3::new());
         trie.insert(b"test", b"test".to_vec()).unwrap();
         assert!(trie.contains(b"test").unwrap());
         assert!(!trie.contains(b"test2").unwrap());
@@ -139,7 +130,7 @@ mod test{
     #[test]
     fn test_trie_remove() {
         let memdb = Arc::new(MemoryDB::new(true));
-        let mut trie = SecureTrie::new(memdb, HasherKeccak::new(), Blake3::new());
+        let mut trie = SecureTrie::new(memdb, HasherKeccak::new(), HasherBlake3::new());
         trie.insert(b"test", b"test".to_vec()).unwrap();
         let removed = trie.remove(b"test").unwrap();
         assert!(removed)
@@ -148,7 +139,7 @@ mod test{
     #[test]
     fn test_trie_random_remove() {
         let memdb = Arc::new(MemoryDB::new(true));
-        let mut trie = SecureTrie::new(memdb, HasherKeccak::new(), Blake3::new());
+        let mut trie = SecureTrie::new(memdb, HasherKeccak::new(), HasherBlake3::new());
 
         for _ in 0..10000 {
             let rand_str: String = thread_rng().sample_iter(&Alphanumeric).take(30).collect();
@@ -165,23 +156,28 @@ mod test{
     fn test_trie_from_root() {
         let memdb = Arc::new(MemoryDB::new(true));
         let root = {
-            let mut trie = SecureTrie::new(memdb.clone(), HasherKeccak::new(), Blake3::new());
+            let mut trie = SecureTrie::new(memdb.clone(), HasherKeccak::new(), HasherBlake3::new());
             trie.insert(b"test", b"test".to_vec()).unwrap();
             trie.insert(b"test1", b"test".to_vec()).unwrap();
             trie.insert(b"test2", b"test".to_vec()).unwrap();
             trie.insert(b"test23", b"test".to_vec()).unwrap();
             trie.insert(b"test33", b"test".to_vec()).unwrap();
             trie.insert(b"test44", b"test".to_vec()).unwrap();
-            trie.root().unwrap()
+            trie.commit().unwrap()
         };
 
-        let mut trie =
-            SecureTrie::from(memdb.clone(), HasherKeccak::new(), Blake3::new(), root.clone()).unwrap();
+        let mut trie = SecureTrie::from(
+            memdb.clone(),
+            HasherKeccak::new(),
+            HasherBlake3::new(),
+            root.clone(),
+        )
+        .unwrap();
         let v1 = trie.get(b"test33").unwrap().map(|x| x.into_owned());
         assert_eq!(Some(b"test".to_vec()), v1);
         let v2 = trie.get(b"test44").unwrap().map(|x| x.into_owned());
         assert_eq!(Some(b"test".to_vec()), v2);
-        let root2 = trie.root().unwrap();
+        let root2 = trie.commit().unwrap();
         assert_eq!(hex::encode(root), hex::encode(root2));
     }
 
@@ -189,18 +185,25 @@ mod test{
     fn test_trie_from_root_and_insert() {
         let memdb = Arc::new(MemoryDB::new(true));
         let root = {
-            let mut trie = SecureTrie::new(Arc::clone(&memdb), HasherKeccak::new(), Blake3::new());
+            let mut trie =
+                SecureTrie::new(Arc::clone(&memdb), HasherKeccak::new(), HasherBlake3::new());
             trie.insert(b"test1", b"test".to_vec()).unwrap();
             trie.insert(b"test2", b"test".to_vec()).unwrap();
             trie.insert(b"test23", b"test".to_vec()).unwrap();
             trie.insert(b"test33", b"test".to_vec()).unwrap();
             trie.insert(b"test44", b"test".to_vec()).unwrap();
-            trie.root().unwrap()
+            trie.commit().unwrap()
         };
 
-        let mut trie = SecureTrie::from(Arc::clone(&memdb), HasherKeccak::new(), Blake3::new(),root).unwrap();
+        let mut trie = SecureTrie::from(
+            Arc::clone(&memdb),
+            HasherKeccak::new(),
+            HasherBlake3::new(),
+            root,
+        )
+        .unwrap();
         trie.insert(b"test55", b"test55".to_vec()).unwrap();
-        trie.root().unwrap();
+        trie.commit().unwrap();
         let v = trie.get(b"test55").unwrap().map(|x| x.into_owned());
         assert_eq!(Some(b"test55".to_vec()), v);
     }
@@ -209,17 +212,24 @@ mod test{
     fn test_trie_from_root_and_delete() {
         let memdb = Arc::new(MemoryDB::new(true));
         let root = {
-            let mut trie = SecureTrie::new(Arc::clone(&memdb), HasherKeccak::new(), Blake3::new());
+            let mut trie =
+                SecureTrie::new(Arc::clone(&memdb), HasherKeccak::new(), HasherBlake3::new());
             trie.insert(b"test", b"test".to_vec()).unwrap();
             trie.insert(b"test1", b"test".to_vec()).unwrap();
             trie.insert(b"test2", b"test".to_vec()).unwrap();
             trie.insert(b"test23", b"test".to_vec()).unwrap();
             trie.insert(b"test33", b"test".to_vec()).unwrap();
             trie.insert(b"test44", b"test".to_vec()).unwrap();
-            trie.root().unwrap()
+            trie.commit().unwrap()
         };
 
-        let mut trie = SecureTrie::from(Arc::clone(&memdb), HasherKeccak::new(), Blake3::new(),  root).unwrap();
+        let mut trie = SecureTrie::from(
+            Arc::clone(&memdb),
+            HasherKeccak::new(),
+            HasherBlake3::new(),
+            root,
+        )
+        .unwrap();
 
         assert!(trie.get(b"test").unwrap().is_some());
         assert!(trie.get(b"test1").unwrap().is_some());
@@ -244,32 +254,38 @@ mod test{
 
         let root1 = {
             let memdb = Arc::new(MemoryDB::new(true));
-            let mut trie = SecureTrie::new(memdb, HasherKeccak::new(), Blake3::new());
+            let mut trie = SecureTrie::new(memdb, HasherKeccak::new(), HasherBlake3::new());
             trie.insert(k0.as_bytes(), v.as_bytes().to_vec()).unwrap();
-            trie.root().unwrap()
+            trie.commit().unwrap()
         };
 
         let root2 = {
             let memdb = Arc::new(MemoryDB::new(true));
-            let mut trie = SecureTrie::new(memdb, HasherKeccak::new(), Blake3::new());
+            let mut trie = SecureTrie::new(memdb, HasherKeccak::new(), HasherBlake3::new());
             trie.insert(k0.as_bytes(), v.as_bytes().to_vec()).unwrap();
             trie.insert(k1.as_bytes(), v.as_bytes().to_vec()).unwrap();
-            trie.root().unwrap();
+            trie.commit().unwrap();
             trie.remove(k1.as_ref()).unwrap();
-            trie.root().unwrap()
+            trie.commit().unwrap()
         };
 
         let root3 = {
             let memdb = Arc::new(MemoryDB::new(true));
-            let mut trie1 = SecureTrie::new(Arc::clone(&memdb), HasherKeccak::new(), Blake3::new());
+            let mut trie1 =
+                SecureTrie::new(Arc::clone(&memdb), HasherKeccak::new(), HasherBlake3::new());
             trie1.insert(k0.as_bytes(), v.as_bytes().to_vec()).unwrap();
             trie1.insert(k1.as_bytes(), v.as_bytes().to_vec()).unwrap();
-            trie1.root().unwrap();
-            let root = trie1.root().unwrap();
-            let mut trie2 =
-                SecureTrie::from(Arc::clone(&memdb), HasherKeccak::new(), Blake3::new(),root).unwrap();
+            trie1.commit().unwrap();
+            let root = trie1.commit().unwrap();
+            let mut trie2 = SecureTrie::from(
+                Arc::clone(&memdb),
+                HasherKeccak::new(),
+                HasherBlake3::new(),
+                root,
+            )
+            .unwrap();
             trie2.remove(&k1.as_bytes().to_vec()).unwrap();
-            trie2.root().unwrap()
+            trie2.commit().unwrap()
         };
 
         assert_eq!(root1, root2);
@@ -279,7 +295,7 @@ mod test{
     #[test]
     fn insert_full_branch() {
         let memdb = Arc::new(MemoryDB::new(true));
-        let mut trie = SecureTrie::new(memdb, HasherKeccak::new(),Blake3::new());
+        let mut trie = SecureTrie::new(memdb, HasherKeccak::new(), HasherBlake3::new());
 
         trie.insert(b"test", b"test".to_vec()).unwrap();
         trie.insert(b"test1", b"test".to_vec()).unwrap();
@@ -287,7 +303,7 @@ mod test{
         trie.insert(b"test23", b"test".to_vec()).unwrap();
         trie.insert(b"test33", b"test".to_vec()).unwrap();
         trie.insert(b"test44", b"test".to_vec()).unwrap();
-        trie.root().unwrap();
+        trie.commit().unwrap();
 
         let v = trie.get(b"test").unwrap().map(|x| x.into_owned());
         assert_eq!(Some(b"test".to_vec()), v);
@@ -296,7 +312,7 @@ mod test{
     #[test]
     fn test_delete_stale_keys_with_random_insert_and_delete() {
         let memdb = Arc::new(MemoryDB::new(true));
-        let mut trie = SecureTrie::new(memdb, HasherKeccak::new(), Blake3::new());
+        let mut trie = SecureTrie::new(memdb, HasherKeccak::new(), HasherBlake3::new());
 
         let mut rng = rand::thread_rng();
         let mut keys = vec![];
@@ -307,72 +323,73 @@ mod test{
             trie.insert(&random_bytes, random_bytes.clone()).unwrap();
             keys.push(random_bytes.clone());
         }
-        trie.root().unwrap();
+        trie.commit().unwrap();
         let slice = &mut keys;
         slice.shuffle(&mut rng);
 
         for key in slice.iter() {
             trie.remove(key).unwrap();
         }
-        trie.root().unwrap();
+        trie.commit().unwrap();
 
         let empty_node_key = HasherKeccak::new().digest(&rlp::NULL_RLP);
-        let value = trie.tire.db.get(
-            &empty_node_key,
-        ).unwrap().unwrap();
+        let value = trie.tire.db.get(&empty_node_key).unwrap().unwrap();
         assert_eq!(value, &rlp::NULL_RLP);
     }
 
-    // #[test]
-    // fn test_proof_random() {
-    //     let memdb = Arc::new(MemoryDB::new(true));
-    //     let mut trie = PatriciaTrie::new(Arc::clone(&memdb), HasherKeccak::new());
-    //     let mut rng = rand::thread_rng();
-    //     let mut keys = vec![];
-    //     for _ in 0..100 {
-    //         let random_bytes: Vec<u8> = (0..rng.gen_range(2, 30))
-    //             .map(|_| rand::random::<u8>())
-    //             .collect();
-    //         trie.insert(&random_bytes, random_bytes.clone()).unwrap();
-    //         keys.push(random_bytes.clone());
-    //     }
-    //     for k in keys.clone().into_iter() {
-    //         trie.insert(&k, k.clone()).unwrap();
-    //     }
-    //     let root = trie.root().unwrap();
-    //     for k in keys.into_iter() {
-    //         let proof = trie.get_proof(&k).unwrap();
-    //         let value = trie.verify_proof(root.clone(), &k, proof).unwrap().unwrap();
-    //         assert_eq!(value, k);
-    //     }
-    // }
+    #[test]
+    fn test_proof_random() {
+        let memdb = Arc::new(MemoryDB::new(true));
+        let mut trie =
+            SecureTrie::new(Arc::clone(&memdb), HasherKeccak::new(), HasherBlake3::new());
+        let mut rng = rand::thread_rng();
+        let mut keys = vec![];
+        for _ in 0..100 {
+            let random_bytes: Vec<u8> = (0..rng.gen_range(2, 30))
+                .map(|_| rand::random::<u8>())
+                .collect();
+            trie.insert(&random_bytes, random_bytes.clone()).unwrap();
+            keys.push(random_bytes);
+        }
+        for k in keys.clone().into_iter() {
+            trie.insert(&k, k.clone()).unwrap();
+        }
+        let root = trie.commit().unwrap();
+        for k in keys.into_iter() {
+            let proof = trie.get_proof(&k).unwrap();
+            let value = trie.verify_proof(root.clone(), &k, proof).unwrap().unwrap();
+            assert_eq!(value, k);
+        }
+    }
 
-    // #[test]
-    // fn test_proof_empty_trie() {
-    //     let memdb = Arc::new(MemoryDB::new(true));
-    //     let mut trie = PatriciaTrie::new(Arc::clone(&memdb), HasherKeccak::new());
-    //     trie.root().unwrap();
-    //     let proof = trie.get_proof(b"not-exist").unwrap();
-    //     assert_eq!(proof.len(), 0);
-    // }
+    #[test]
+    fn test_proof_empty_trie() {
+        let memdb = Arc::new(MemoryDB::new(true));
+        let mut trie =
+            SecureTrie::new(Arc::clone(&memdb), HasherKeccak::new(), HasherBlake3::new());
+        trie.commit().unwrap();
+        let proof = trie.get_proof(b"not-exist").unwrap();
+        assert_eq!(proof.len(), 0);
+    }
 
-    // #[test]
-    // fn test_proof_one_element() {
-    //     let memdb = Arc::new(MemoryDB::new(true));
-    //     let mut trie = PatriciaTrie::new(Arc::clone(&memdb), HasherKeccak::new());
-    //     trie.insert(b"k", b"v".to_vec()).unwrap();
-    //     let root = trie.root().unwrap();
-    //     let proof = trie.get_proof(b"k").unwrap();
-    //     assert_eq!(proof.len(), 1);
-    //     let value = trie
-    //         .verify_proof(root.clone(), b"k", proof.clone())
-    //         .unwrap();
-    //     assert_eq!(value, Some(b"v".to_vec()));
+    #[test]
+    fn test_proof_one_element() {
+        let memdb = Arc::new(MemoryDB::new(true));
+        let mut trie =
+            SecureTrie::new(Arc::clone(&memdb), HasherKeccak::new(), HasherBlake3::new());
+        trie.insert(b"k", b"v".to_vec()).unwrap();
+        let root = trie.commit().unwrap();
+        let proof = trie.get_proof(b"k").unwrap();
+        assert_eq!(proof.len(), 1);
+        let value = trie
+            .verify_proof(root.clone(), b"k", proof.clone())
+            .unwrap();
+        assert_eq!(value, Some(b"v".to_vec()));
 
-    //     // remove key does not affect the verify process
-    //     trie.remove(b"k").unwrap();
-    //     let _root = trie.root().unwrap();
-    //     let value = trie.verify_proof(root, b"k", proof).unwrap();
-    //     assert_eq!(value, Some(b"v".to_vec()));
-    // }
+        // remove key does not affect the verify process
+        trie.remove(b"k").unwrap();
+        let _root = trie.commit().unwrap();
+        let value = trie.verify_proof(root, b"k", proof).unwrap();
+        assert_eq!(value, Some(b"v".to_vec()));
+    }
 }

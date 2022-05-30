@@ -2,15 +2,15 @@ use super::Hasher;
 
 ///Hasher of Blake3.
 #[derive(Clone, Copy, Debug)]
-pub struct Blake3;
+pub struct HasherBlake3;
 
-impl Blake3 {
+impl HasherBlake3 {
     pub fn new() -> Self {
-        Blake3{}
+        HasherBlake3{}
     }
 }
 
-impl Hasher for Blake3 {
+impl Hasher for HasherBlake3 {
     const LENGTH: usize = 32;
 
     fn digest(&self, data: &[u8]) -> Vec<u8> {

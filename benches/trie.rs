@@ -2,36 +2,36 @@ use std::sync::Arc;
 
 use criterion::{criterion_group, criterion_main, Criterion};
 
-use hasher::HasherKeccak;
 use uuid::Uuid;
 
 use cita_trie::MemoryDB;
-use cita_trie::{PatriciaTrie, Trie};
+use cita_trie::PatriciaTrie;
+use cita_trie::hasher::HasherKeccak;
 
 fn insert_worse_case_benchmark(c: &mut Criterion) {
     c.bench_function("insert one", |b| {
         let mut trie = PatriciaTrie::new(
             Arc::new(MemoryDB::new(false)),
-            Arc::new(HasherKeccak::new()),
+            HasherKeccak::new(),
         );
 
         b.iter(|| {
-            let key = Uuid::new_v4().as_bytes().to_vec();
+            let key = Uuid::new_v4();
             let value = Uuid::new_v4().as_bytes().to_vec();
-            trie.insert(key, value).unwrap()
+            trie.insert(&*key.as_bytes(), value).unwrap()
         })
     });
 
     c.bench_function("insert 1k", |b| {
         let mut trie = PatriciaTrie::new(
             Arc::new(MemoryDB::new(false)),
-            Arc::new(HasherKeccak::new()),
+            HasherKeccak::new(),
         );
 
         let (keys, values) = random_data(1000);
         b.iter(|| {
             for i in 0..keys.len() {
-                trie.insert(keys[i].clone(), values[i].clone()).unwrap()
+                trie.insert(&keys[i], values[i].clone()).unwrap()
             }
         });
     });
@@ -39,13 +39,13 @@ fn insert_worse_case_benchmark(c: &mut Criterion) {
     c.bench_function("insert 10k", |b| {
         let mut trie = PatriciaTrie::new(
             Arc::new(MemoryDB::new(false)),
-            Arc::new(HasherKeccak::new()),
+            HasherKeccak::new(),
         );
 
         let (keys, values) = random_data(10000);
         b.iter(|| {
             for i in 0..keys.len() {
-                trie.insert(keys[i].clone(), values[i].clone()).unwrap()
+                trie.insert(&keys[i], values[i].clone()).unwrap()
             }
         });
     });
@@ -53,12 +53,12 @@ fn insert_worse_case_benchmark(c: &mut Criterion) {
     c.bench_function("get based 10k", |b| {
         let mut trie = PatriciaTrie::new(
             Arc::new(MemoryDB::new(false)),
-            Arc::new(HasherKeccak::new()),
+            HasherKeccak::new(),
         );
 
         let (keys, values) = random_data(10000);
         for i in 0..keys.len() {
-            trie.insert(keys[i].clone(), values[i].clone()).unwrap()
+            trie.insert(&keys[i], values[i].clone()).unwrap()
         }
 
         b.iter(|| {
@@ -70,12 +70,12 @@ fn insert_worse_case_benchmark(c: &mut Criterion) {
     c.bench_function("remove 1k", |b| {
         let mut trie = PatriciaTrie::new(
             Arc::new(MemoryDB::new(false)),
-            Arc::new(HasherKeccak::new()),
+            HasherKeccak::new(),
         );
 
         let (keys, values) = random_data(1000);
         for i in 0..keys.len() {
-            trie.insert(keys[i].clone(), values[i].clone()).unwrap()
+            trie.insert(&keys[i], values[i].clone()).unwrap()
         }
 
         b.iter(|| {
@@ -88,12 +88,12 @@ fn insert_worse_case_benchmark(c: &mut Criterion) {
     c.bench_function("remove 10k", |b| {
         let mut trie = PatriciaTrie::new(
             Arc::new(MemoryDB::new(false)),
-            Arc::new(HasherKeccak::new()),
+            HasherKeccak::new(),
         );
 
         let (keys, values) = random_data(10000);
         for i in 0..keys.len() {
-            trie.insert(keys[i].clone(), values[i].clone()).unwrap()
+            trie.insert(&keys[i], values[i].clone()).unwrap()
         }
 
         b.iter(|| {
@@ -119,3 +119,4 @@ fn random_data(n: usize) -> (Vec<Vec<u8>>, Vec<Vec<u8>>) {
 
 criterion_group!(benches, insert_worse_case_benchmark);
 criterion_main!(benches);
+

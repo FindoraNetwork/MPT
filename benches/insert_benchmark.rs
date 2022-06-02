@@ -2,50 +2,41 @@ use std::sync::Arc;
 
 use criterion::{criterion_group, criterion_main, Criterion};
 
-use hasher::HasherKeccak;
 use uuid::Uuid;
 
+use cita_trie::hasher::HasherKeccak;
 use cita_trie::MemoryDB;
-use cita_trie::{PatriciaTrie, Trie};
+use cita_trie::PatriciaTrie;
 
 fn insert_worse_case_benchmark(c: &mut Criterion) {
     c.bench_function("cita-trie insert one", |b| {
-        let mut trie = PatriciaTrie::new(
-            Arc::new(MemoryDB::new(false)),
-            Arc::new(HasherKeccak::new()),
-        );
+        let mut trie = PatriciaTrie::new(Arc::new(MemoryDB::new(false)), HasherKeccak::new());
 
         b.iter(|| {
-            let key = Uuid::new_v4().as_bytes().to_vec();
+            let key = Uuid::new_v4();
             let value = Uuid::new_v4().as_bytes().to_vec();
-            trie.insert(key, value).unwrap()
+            trie.insert(&*key.as_bytes(), value).unwrap()
         })
     });
 
     c.bench_function("cita-trie insert 1k", |b| {
-        let mut trie = PatriciaTrie::new(
-            Arc::new(MemoryDB::new(false)),
-            Arc::new(HasherKeccak::new()),
-        );
+        let mut trie = PatriciaTrie::new(Arc::new(MemoryDB::new(false)), HasherKeccak::new());
 
         let (keys, values) = random_data(1000);
         b.iter(|| {
             for i in 0..keys.len() {
-                trie.insert(keys[i].clone(), values[i].clone()).unwrap()
+                trie.insert(&keys[i], values[i].clone()).unwrap()
             }
         });
     });
 
     c.bench_function("cita-trie insert 10k", |b| {
-        let mut trie = PatriciaTrie::new(
-            Arc::new(MemoryDB::new(false)),
-            Arc::new(HasherKeccak::new()),
-        );
+        let mut trie = PatriciaTrie::new(Arc::new(MemoryDB::new(false)), HasherKeccak::new());
 
         let (keys, values) = random_data(10000);
         b.iter(|| {
             for i in 0..keys.len() {
-                trie.insert(keys[i].clone(), values[i].clone()).unwrap()
+                trie.insert(&keys[i], values[i].clone()).unwrap()
             }
         });
     });
